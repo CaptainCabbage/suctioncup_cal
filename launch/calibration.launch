@@ -1,0 +1,5 @@
+<launch>
+    <include file="$(find robot_node)/launch/abb120.launch" />
+    <include file="$(find netft_rdt_driver)/launch/netft.launch" />
+
+</launch>

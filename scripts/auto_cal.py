@@ -12,37 +12,35 @@ import time
 from std_msgs.msg import Int32, String
 from threading import Lock
 
+
 class Calibration():
 
     def __init__(self):
         rospy.loginfo('Waiting for services...')
         self.lock = Lock()
         rospy.init_node('suctioncup_cal', anonymous=True, disable_signals=True)
-        robot_ns = "/abb120/robot_node"
+        robot_ns = "/abb120/robot_node" #TODO figure this out
 
         rospy.wait_for_service(robot_ns + '/robot_SetWorkObject')
 
-        # TODO: add needed, delete useless
-        #robot_SetWorkObject = rospy.ServiceProxy(robot_ns + '/robot_SetWorkObject', robot_SetWorkObject)
-        #robot_SetTool = rospy.ServiceProxy(robot_ns + '/robot_SetTool', robot_SetTool)
-        #robot_SetZone = rospy.ServiceProxy(robot_ns + '/robot_SetZone', robot_SetZone)
         self.robot_SetSpeed = rospy.ServiceProxy(robot_ns + '/robot_SetSpeed', robot_SetSpeed)
         self.robot_SetCartesian = rospy.ServiceProxy(robot_ns + '/robot_SetCartesian', robot_SetCartesian)
         self.robot_GetCartesian = rospy.ServiceProxy(robot_ns + '/robot_GetCartesian', robot_GetCartesian)
-        #robot_GetIK = rospy.ServiceProxy(robot_ns + '/robot_GetIK', robot_GetIK)
-        #robot_SetJoints = rospy.ServiceProxy(robot_ns + '/robot_SetJoints', robot_SetJoints)
+        self.netft_subscriber = rospy.Subscriber('/netft/data', WrenchStamped, self.force_torque_callback)
         rospy.loginfo('All services registered.')
 
+        # Initialize the robot
+        self.robot_SetSpeed(50,50) #TODO: set robot speed to be slow
 
-
-        #TODO: set robot speed to be slow
-
-        #pos = self.robot_GetCartesian()
+        pos = self.robot_GetCartesian()
         #[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
-        #robot_SetCartesian(workspace_center[0], workspace_center[1], workspace_center[2], *initial_quaternion)
+        self.robot_SetCartesian([pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz])
 
+    def force_torque_callback(self,data):
+        with self.lock:
+            self.cur_wrench = data
 
-    def go_and_record(self, p):
+    def go_and_record(self, p, seqid):
         #TODO
         # set robot Cartesian
         self.robot_SetCartesian(p)
@@ -52,78 +50,57 @@ class Calibration():
         wrench = 0 #TODO: get wrench data
         time_now = rospy.Time.now()
 
-        pos_data = to_poseStamped(time_now,'',[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz])
-        wrench_data = to_wrenchStamped(time_now,'',[]); #TODO
+        pos_data = to_poseStamped(time_now,seqid,[pos.x, pos.y, pos.z], [pos.q0, pos.qx, pos.qy, pos.qz])
+        #wrench_data = to_wrenchStamped(time_now,seqid,[]); #TODO
+        wrench_data = self.cur_wrench
+        wrench_data.header.seq = seqid
+        wrench_data.header.frame_id = 'ft_tool'
 
         # record the cartesian and wrench
         self.bag.write('position', pos_data)
         self.bag.write('wrench', wrench_data)
 
-    def auto_calibration(self):
+    def auto_calibration(self,init_cartesian, max_p, max_angle, iter):
         #given some p
         # go_and_record
         bagname = 'suctioncup_cal'+ str(int(time.time())) + '.bag'
         rospy.loginfo("Recording bag with name: {0}".format(bagname))
         self.bag = rosbag.Bag(bagname, mode='w')
 
-        #TODO: get initial cartesian and wrench(close to zeros, need manually adjust)
-        self.init_pos_data = 0
-        self.init_wrench_data = 0
-        self.bag.write('initial position', pos_data)
-        self.bag.write('initial wrench', wrench_data)
+        #TODO: get and set initial cartesian and wrench(close to zeros, need manually adjust)
+        self.robot_SetCartesian(init_cartesian)
+        self.init_wrench_data = self.cur_wrench
+        self.init_cartesian = self.init_cartesian
+        self.bag.write('initial position', init_cartesian)
+        self.bag.write('initial wrench', self.init_wrench_data)
 
-        # compute p
-        # go_and_record
+        R0 = tr.quaternion_matrix(init_cartesian[3:7])
 
-    def limit_test(self):
-        #TODO:
-        # go in six directions to and record the forces
-        # get all the feasible forces in the convex hull of sampled forces
-        self.rec = Recorder()
-        self.rec.start()
-        self.rec.stop()
+        for i in range(iter):
+            # compute p
+            dp = [random.random(), random.random(), random.random()]
+            dp = max_p*random.random()*dp/np.linalg.norm(dp)
+            dr = [random.random(), random.random(), 0]
+            dr = dr/np.linalg.norm(dr)
+            dR = tr.rotation_matrix(max_angle*random.random(), dr)
+            R = np.dot(R0,dR)
+            quat_i = tr.quaternion_from_matrix(R)
+            pos_i = dp + init_cartesian[0:3]
+            rospy.loginfo("Please check the robot position:")
+            raw_input(quat_i+pos_i)
+            # go_and_record
+            self.go_and_record(pos_i+quat_i, i)
 
-
-class Recorder():
-
-    def __init__(self):
-        self.lock = Lock()
-        self.is_open = False
-
-    def start(self):
-        name_string = 'suctioncup_limit_'+ str(int(time.time())) + '.bag'
-        rospy.loginfo("Recording bag with name: {0}".format(name_string))
-        with self.lock:
-            self.bag = rosbag.Bag (name_string, mode='w')
-            self.is_open = True
-            # TODO: find the topic names, and data type
-            self.netft_subscriber = rospy.Subscriber('/netft/data',WrenchStamped,  self.force_torque_callback)
-            self.robot_subscriber = rospy.Subscriber('/foxbot/robot_CartesianLog', PoseStamped, self.robot_callback)
-
-    def stop(self):
         rospy.loginfo("Stopping Recording")
-        with self.lock:
-            self.netft_subscriber.unregister()
-            self.robot_subscriber.unregister()
-            self.bag.close()
-            self.is_open = False
-        rospy.loginfo("Recording stopped.")
+        self.bag.close()
+        self.netft_subscriber.unregister()
+        return
 
-    def force_torque_callback(self,data):
-        with self.lock:
-            if self.is_open:
-                self.bag.write('netft', data)
-
-    def robot_callback(self, data):
-        with self.lock:
-            if self.is_open:
-                self.bag.write('position', data)
-
-
-def to_poseStamped(t, frameid, p, q):
+def to_poseStamped(t, seqid, p, q):
     poses = PoseStamped()
     poses.header.stamp = t
-    poses.header.frame_id = frameid
+    poses.header.seq = seqid
+    poses.header.frame_id = 'world'
     poses.pose.position.x = p[1]
     poses.pose.position.y = p[2]
     poses.pose.position.z = p[3]
@@ -134,10 +111,11 @@ def to_poseStamped(t, frameid, p, q):
 
     return poses
 
-def to_wrenchStamped(t, frameid, f, tau):
+def to_wrenchStamped(t, seqid, f, tau):
     wrenchs = wrenchStamped()
     wrenchs.header.stamp = t
-    wrenchs.header.frame_id = frameid
+    wrenchs.header.seq = seqid
+    wrenchs.header.frame_id = 'tool'
     wrenchs.wrench.force.x = f[1]
     wrenchs.wrench.force.y = f[2]
     wrenchs.wrench.force.z = f[3]
@@ -146,3 +124,12 @@ def to_wrenchStamped(t, frameid, f, tau):
     wrenchs.wrench.torque.z = tau[3]
 
     return wrenchs
+
+if __name__ == '__main__':
+    cal = Calibration()
+    rospy.sleep(1)
+    init_cartesian = [] # TODO: find by experiment
+    max_p = 0
+    max_angle = 0
+    iter = 10
+    cal.auto_calibration(init_cartesian, max_p, max_angle, iter)
