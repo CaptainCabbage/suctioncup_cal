@@ -92,7 +92,7 @@ class Calibration():
             angle = max_angle*random.random()
             print(angle)
             dR = tr.rotation_matrix(angle*np.pi/180, dr)
-            dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
+            dp_compensate = -np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
             print(dR)
             R = np.dot(R0,dR)
             quat_i = tr.quaternion_from_matrix(R)
