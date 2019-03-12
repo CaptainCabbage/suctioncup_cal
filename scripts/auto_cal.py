@@ -19,7 +19,7 @@ class Calibration():
         rospy.loginfo('Waiting for services...')
         self.lock = Lock()
         rospy.init_node('suctioncup_cal', anonymous=True, disable_signals=True)
-        robot_ns = "/abb120/robot_node" #TODO figure this out
+        robot_ns = "/abb120" #TODO figure this out
 
         rospy.wait_for_service(robot_ns + '/robot_SetWorkObject')
 
@@ -34,7 +34,8 @@ class Calibration():
 
         pos = self.robot_GetCartesian()
         #[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
-        self.robot_SetCartesian([pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz])
+        print(pos)
+        #self.robot_SetCartesian([pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz])
 
     def force_torque_callback(self,data):
         with self.lock:
@@ -132,4 +133,4 @@ if __name__ == '__main__':
     max_p = 0
     max_angle = 0
     iter = 10
-    cal.auto_calibration(init_cartesian, max_p, max_angle, iter)
+    #cal.auto_calibration(init_cartesian, max_p, max_angle, iter)

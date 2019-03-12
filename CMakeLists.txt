@@ -12,6 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  netft_rdt_driver
 )
 
 ## System dependencies are found with CMake's conventions
