@@ -13,7 +13,16 @@ from std_msgs.msg import *
 from geometry_msgs.msg import *
 from threading import Lock
 
+# vary among grippers, figure this out before experiments
 GRIPPER_LENGTH = 155
+RATE = 0.2857 # corresponding tangential translation rate to z change
+Z_ref = 421.5
+Z_low = 422
+Z_high = 439
+
+#
+MAX_ANGLE = 8 # max random rotational angle, unit:degree
+ITER_NUM = 5
 RANDOM_SEED = 0
 
 class Calibration():
@@ -65,7 +74,7 @@ class Calibration():
         self.bag.write('position', pos_data)
         self.bag.write('wrench', wrench_data)
 
-    def auto_calibration(self,init_cartesian, max_p, max_angle, iter):
+    def auto_calibration(self,init_cartesian, max_p_rate, max_angle, iter):
         #given some p
         # go_and_record
         print('Start auto-calibration.')
@@ -85,8 +94,11 @@ class Calibration():
         R0 = tr.quaternion_matrix(init_cartesian[3:7])
 
         np.random.seed(RANDOM_SEED)
-        dp_all = 2*(np.random.rand(iter, 3)-[0.5,0.5,1])
-        dp_v = np.random.rand(iter)
+
+        dz = 17*np.random.rand(iter)
+        dt = 2*(np.random.rand(iter,2)-0.5)
+        dt_v = np.random.rand(iter)*max_p_rate*(dz + Z_low - Z_ref)
+
         angle_all = np.random.rand(iter)
         dr_all = np.random.rand(iter,2)
 
@@ -95,8 +107,8 @@ class Calibration():
         # for position only
         for i in range(iter):
             # compute p
-            dp = dp_all[i]
-            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
+            dp = dt_v[i]*dt[i]/np.linalg.norm(dt[i])
+            dp = np.append(dp,dz[i] + Z_low -init_cartesian[2])
             print('translation:')
             print(dp)
             quat_i = init_cartesian[3:7]
@@ -112,8 +124,6 @@ class Calibration():
 
         for i in range(iter):
             # compute p
-            dp = dp_all[i]
-            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
             dp = np.array([0,0,0])
             dr = np.append(dr_all[i],0)
             dr = dr/np.linalg.norm(dr)
@@ -138,8 +148,8 @@ class Calibration():
         # for position only
         for i in range(iter):
             # compute p
-            dp = dp_all[i]
-            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
+            dp = dt_v[i]*dt[i]/np.linalg.norm(dt[i])
+            dp = np.append(dp,dz[i] + Z_low -init_cartesian[2])
             print('translation:')
             print(dp)
             quat_i = init_cartesian[3:7]
@@ -154,8 +164,6 @@ class Calibration():
 
         for i in range(iter):
             # compute p
-            dp = dp_all[i]
-            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
             dp = np.array([0,0,0])
             dr = np.append(dr_all[i],0)
             dr = dr/np.linalg.norm(dr)
@@ -216,7 +224,4 @@ if __name__ == '__main__':
     pos = cal.robot_GetCartesian()
     p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
     init_cartesian = p # TODO: find by experiment
-    max_p = 5 # max_x, max_y = max_p; max_z = 2*max_p
-    max_angle = 8 # degree
-    iter_num = 5 # 2*iter total: translation x iter + rotation x iter
-    cal.auto_calibration(init_cartesian, max_p, max_angle, iter_num)
+    cal.auto_calibration(init_cartesian, RATE, MAX_ANGLE, ITER_NUM)
