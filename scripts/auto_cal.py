@@ -13,7 +13,8 @@ from std_msgs.msg import *
 from geometry_msgs.msg import *
 from threading import Lock
 
-GRIPPER_LENGTH = 200
+GRIPPER_LENGTH = 155
+RANDOM_SEED = 0
 
 class Calibration():
 
@@ -36,6 +37,7 @@ class Calibration():
 
         pos = self.robot_GetCartesian()
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
+        print('initial cartesian: ')
         print(p)
         self.robot_SetCartesian(*p)
 	rospy.loginfo('Initialized.')
@@ -47,13 +49,13 @@ class Calibration():
     def go_and_record(self, p, seqid):
         #TODO
         # set robot Cartesian
-	rospy.loginfo('Go')
+        print('Go')
         self.robot_SetCartesian(*p)
         #wait for a while
-        rospy.sleep(2)
+        rospy.sleep(5)
         pos = self.robot_GetCartesian()
         time_now = rospy.Time.now()
-	rospy.loginfo('recording data...')
+        print('recording data...')
         pos_data = to_poseStamped(time_now,seqid,[pos.x, pos.y, pos.z], [pos.q0, pos.qx, pos.qy, pos.qz])
         wrench_data = self.cur_wrench
         wrench_data.header.seq = seqid
@@ -66,9 +68,9 @@ class Calibration():
     def auto_calibration(self,init_cartesian, max_p, max_angle, iter):
         #given some p
         # go_and_record
-	rospy.loginfo('Start auto-calibration.')
+        print('Start auto-calibration.')
         bagname = 'suctioncup_cal'+ str(int(time.time())) + '.bag'
-        rospy.loginfo("Recording bag with name: {0}".format(bagname))
+        print("Recording bag with name: {0}".format(bagname))
         self.bag = rosbag.Bag(bagname, mode='w')
 
         #TODO: get and set initial cartesian and wrench(close to zeros, need manually adjust)
@@ -82,28 +84,99 @@ class Calibration():
 
         R0 = tr.quaternion_matrix(init_cartesian[3:7])
 
+        np.random.seed(RANDOM_SEED)
+        dp_all = 2*(np.random.rand(iter, 3)-[0.5,0.5,1])
+        dp_v = np.random.rand(iter)
+        angle_all = np.random.rand(iter)
+        dr_all = np.random.rand(iter,2)
+
+	    # go back to initial position every time
+        print('Test with going back to intial position every trial:')
+        # for position only
         for i in range(iter):
             # compute p
-            dp = np.array([random.random(), random.random(), random.random()])
-            dp = max_p*random.random()*dp/np.linalg.norm(dp)
-            #dp = np.array([-100,0,0])
-            dr = np.array([random.random(), random.random(), 0])
+            dp = dp_all[i]
+            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
+            print('translation:')
+            print(dp)
+            quat_i = init_cartesian[3:7]
+            pos_i = dp + init_cartesian[0:3]
+            print("Please check the robot position:")
+            p_new = np.append(pos_i,quat_i)
+            raw_input(p_new)
+            # go_and_record
+            self.go_and_record(p_new, i+1)
+            self.robot_SetCartesian(*init_cartesian)
+
+	# for rotation only
+
+        for i in range(iter):
+            # compute p
+            dp = dp_all[i]
+            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
+            dp = np.array([0,0,0])
+            dr = np.append(dr_all[i],0)
             dr = dr/np.linalg.norm(dr)
-            angle = max_angle*random.random()
+            angle = max_angle*angle_all[i]
+            print('rotation angle: ')
             print(angle)
             dR = tr.rotation_matrix(angle*np.pi/180, dr)
             dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
-            print(dR)
+            #print(dR)
             R = np.dot(R0,dR)
             quat_i = tr.quaternion_from_matrix(R)
             pos_i = dp + dp_compensate + init_cartesian[0:3]
-            rospy.loginfo("Please check the robot position:")
+            print("Please check the robot position:")
+            p_new = np.append(pos_i,quat_i)
+            raw_input(p_new)
+            # go_and_record
+            self.go_and_record(p_new, i+i+1)
+            self.robot_SetCartesian(*init_cartesian)
+
+        print('Test with not going back to intial position every trial:')
+        raw_input('Press Enter to Continue:')
+        # for position only
+        for i in range(iter):
+            # compute p
+            dp = dp_all[i]
+            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
+            print('translation:')
+            print(dp)
+            quat_i = init_cartesian[3:7]
+            pos_i = dp + init_cartesian[0:3]
+            print("Please check the robot position:")
             p_new = np.append(pos_i,quat_i)
             raw_input(p_new)
             # go_and_record
             self.go_and_record(p_new, i+1)
 
-        rospy.loginfo("Stopping Recording")
+	    # for rotation only
+
+        for i in range(iter):
+            # compute p
+            dp = dp_all[i]
+            dp = max_p*dp_v[i]*dp/np.linalg.norm(dp)
+            dp = np.array([0,0,0])
+            dr = np.append(dr_all[i],0)
+            dr = dr/np.linalg.norm(dr)
+            angle = max_angle*angle_all[i]
+            print('rotation angle: ')
+            print(angle)
+            dR = tr.rotation_matrix(angle*np.pi/180, dr)
+            dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
+            #print(dR)
+            R = np.dot(R0,dR)
+            quat_i = tr.quaternion_from_matrix(R)
+            pos_i = dp + dp_compensate + init_cartesian[0:3]
+            print("Please check the robot position:")
+            p_new = np.append(pos_i,quat_i)
+            raw_input(p_new)
+            # go_and_record
+            self.go_and_record(p_new, i+i+1)
+
+        self.robot_SetCartesian(*init_cartesian)
+
+        print("Stopping Recording")
         self.bag.close()
         self.netft_subscriber.unregister()
         return
@@ -143,7 +216,7 @@ if __name__ == '__main__':
     pos = cal.robot_GetCartesian()
     p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
     init_cartesian = p # TODO: find by experiment
-    max_p = 0
-    max_angle = 5
-    iter_num = 5
+    max_p = 5 # max_x, max_y = max_p; max_z = 2*max_p
+    max_angle = 8 # degree
+    iter_num = 5 # 2*iter total: translation x iter + rotation x iter
     cal.auto_calibration(init_cartesian, max_p, max_angle, iter_num)

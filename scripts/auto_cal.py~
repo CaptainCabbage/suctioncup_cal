@@ -13,7 +13,8 @@ from std_msgs.msg import *
 from geometry_msgs.msg import *
 from threading import Lock
 
-GRIPPER_LENGTH = 200
+GRIPPER_LENGTH = 155
+RANDOM_SEED = 1
 
 class Calibration():
 
@@ -36,6 +37,7 @@ class Calibration():
 
         pos = self.robot_GetCartesian()
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
+        print('initial cartesian: ')
         print(p)
         self.robot_SetCartesian(*p)
 	rospy.loginfo('Initialized.')
@@ -50,7 +52,7 @@ class Calibration():
 	rospy.loginfo('Go')
         self.robot_SetCartesian(*p)
         #wait for a while
-        rospy.sleep(2)
+        rospy.sleep(5)
         pos = self.robot_GetCartesian()
         time_now = rospy.Time.now()
 	rospy.loginfo('recording data...')
@@ -82,18 +84,38 @@ class Calibration():
 
         R0 = tr.quaternion_matrix(init_cartesian[3:7])
 
+	# go back to initial position every time
+        # for position only
+        for i in range(iter):
+            # compute p
+            dp = np.array([2*(random.random()-0.5), 2*(random.random()-0.5), 2*(random.random()-0.3)])
+            dp = max_p*random.random()*dp/np.linalg.norm(dp)
+            print('translation:')
+            print(dp)
+            quat_i = init_cartesian[3:7]
+            pos_i = dp + init_cartesian[0:3]
+            rospy.loginfo("Please check the robot position:")
+            p_new = np.append(pos_i,quat_i)
+            raw_input(p_new)
+            # go_and_record
+            self.robot_SetCartesian(*init_cartesian)
+            self.go_and_record(p_new, i+1)
+
+	# for rotation only
+
         for i in range(iter):
             # compute p
             dp = np.array([random.random(), random.random(), random.random()])
             dp = max_p*random.random()*dp/np.linalg.norm(dp)
-            #dp = np.array([-100,0,0])
-            dr = np.array([random.random(), random.random(), 0])
+            dp = np.array([0,0,0])
+            dr = np.array([2*(random.random()-0.5), 2*(random.random()-0.5), 0])
             dr = dr/np.linalg.norm(dr)
             angle = max_angle*random.random()
+            print('rotation angle: ')
             print(angle)
             dR = tr.rotation_matrix(angle*np.pi/180, dr)
-            dp_compensate = -np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
-            print(dR)
+            dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
+            #print(dR)
             R = np.dot(R0,dR)
             quat_i = tr.quaternion_from_matrix(R)
             pos_i = dp + dp_compensate + init_cartesian[0:3]
@@ -101,7 +123,11 @@ class Calibration():
             p_new = np.append(pos_i,quat_i)
             raw_input(p_new)
             # go_and_record
-            self.go_and_record(p_new, i+1)
+            self.robot_SetCartesian(*init_cartesian)
+            self.go_and_record(p_new, i+i+1)
+
+        self.robot_SetCartesian(*init_cartesian)
+
 
         rospy.loginfo("Stopping Recording")
         self.bag.close()
@@ -143,7 +169,7 @@ if __name__ == '__main__':
     pos = cal.robot_GetCartesian()
     p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
     init_cartesian = p # TODO: find by experiment
-    max_p = 0
-    max_angle = 5
-    iter_num = 5
+    max_p = 10 # max_x, max_y = max_p; max_z = 2*max_p
+    max_angle = 10 # degree
+    iter_num = 5 # 2*iter total: translation x iter + rotation x iter
     cal.auto_calibration(init_cartesian, max_p, max_angle, iter_num)
