@@ -120,29 +120,6 @@ class Calibration():
             self.go_and_record(p_new, i+1)
             self.robot_SetCartesian(*init_cartesian)
 
-	# for rotation only
-'''
-        for i in range(iter):
-            # compute p
-            dp = np.array([0,0,0])
-            dr = np.append(dr_all[i],0)
-            dr = dr/np.linalg.norm(dr)
-            angle = max_angle*angle_all[i]
-            print('rotation angle: ')
-            print(angle)
-            dR = tr.rotation_matrix(angle*np.pi/180, dr)
-            dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
-            #print(dR)
-            R = np.dot(R0,dR)
-            quat_i = tr.quaternion_from_matrix(R)
-            pos_i = dp + dp_compensate + init_cartesian[0:3]
-            print("Please check the robot position:")
-            p_new = np.append(pos_i,quat_i)
-            raw_input(p_new)
-            # go_and_record
-            self.go_and_record(p_new, i+i+1)
-            self.robot_SetCartesian(*init_cartesian)
-'''
         print('Test with not going back to intial position every trial:')
         raw_input('Press Enter to Continue:')
         # for position only
