@@ -143,6 +143,7 @@ class Calibration():
             self.go_and_record(p_new, i+i+1)
             self.robot_SetCartesian(*init_cartesian)
 '''
+
         print('Test with not going back to intial position every trial:')
         raw_input('Press Enter to Continue:')
         # for position only
