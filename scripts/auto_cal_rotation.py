@@ -18,10 +18,10 @@ GRIPPER_LENGTH = 155
 RATE = 0.2857 # corresponding tangential translation rate to z change
 Z_ref = 421.5
 Z_low = 422
-Z_high = 439
+Z_high = 437
 
 #
-MAX_ANGLE = 8 # max random rotational angle, unit:degree
+MAX_ANGLE = 5 # max random rotational angle, unit:degree
 ITER_NUM = 5
 RANDOM_SEED = 0
 
@@ -95,7 +95,7 @@ class Calibration():
 
         np.random.seed(RANDOM_SEED)
 
-        dz = 17*np.random.rand(iter)
+        dz = (Z_high - Z_low)*np.random.rand(iter)
         dt = 2*(np.random.rand(iter,2)-0.5)
         dt_v = np.random.rand(iter)*max_p_rate*(dz + Z_low - Z_ref)
 
@@ -104,24 +104,7 @@ class Calibration():
 
 	    # go back to initial position every time
         print('Test with going back to intial position every trial:')
-        # for position only
-        for i in range(iter):
-            # compute p
-            dp = dt_v[i]*dt[i]/np.linalg.norm(dt[i])
-            dp = np.append(dp,dz[i] + Z_low -init_cartesian[2])
-            print('translation:')
-            print(dp)
-            quat_i = init_cartesian[3:7]
-            pos_i = dp + init_cartesian[0:3]
-            print("Please check the robot position:")
-            p_new = np.append(pos_i,quat_i)
-            raw_input(p_new)
-            # go_and_record
-            self.go_and_record(p_new, i+1)
-            self.robot_SetCartesian(*init_cartesian)
-
-	# for rotation only
-
+	    # for rotation only
         for i in range(iter):
             # compute p
             dp = np.array([0,0,0])
@@ -142,26 +125,12 @@ class Calibration():
             # go_and_record
             self.go_and_record(p_new, i+i+1)
             self.robot_SetCartesian(*init_cartesian)
+            rospy.sleep(5)
 
         print('Test with not going back to intial position every trial:')
         raw_input('Press Enter to Continue:')
-        # for position only
-        for i in range(iter):
-            # compute p
-            dp = dt_v[i]*dt[i]/np.linalg.norm(dt[i])
-            dp = np.append(dp,dz[i] + Z_low -init_cartesian[2])
-            print('translation:')
-            print(dp)
-            quat_i = init_cartesian[3:7]
-            pos_i = dp + init_cartesian[0:3]
-            print("Please check the robot position:")
-            p_new = np.append(pos_i,quat_i)
-            raw_input(p_new)
-            # go_and_record
-            self.go_and_record(p_new, i+1)
 
 	    # for rotation only
-
         for i in range(iter):
             # compute p
             dp = np.array([0,0,0])
