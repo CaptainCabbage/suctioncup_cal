@@ -30,7 +30,7 @@ class Calibration():
     def __init__(self):
         rospy.loginfo('Waiting for services...')
         self.lock = Lock()
-        rospy.init_node('suctioncup_cal', anonymous=True, disable_signals=True)
+        rospy.init_node('suctioncup_cal_rotation', anonymous=True, disable_signals=True)
         robot_ns = "/abb120" #TODO figure this out
 
         rospy.wait_for_service(robot_ns + '/robot_SetWorkObject')

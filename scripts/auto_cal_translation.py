@@ -15,14 +15,14 @@ from threading import Lock
 
 # vary among grippers, figure this out before experiments
 GRIPPER_LENGTH = 155
-RATE = 0.2857 # corresponding tangential translation rate to z change
+RATE = 0.2258 # corresponding tangential translation rate to z change
 Z_ref = 421.5
 Z_low = 422
-Z_high = 437
+Z_high = 436
 
 #
 MAX_ANGLE = 8
-ITER_NUM = 20
+ITER_NUM = 30
 RANDOM_SEED = 0
 
 class Calibration():
