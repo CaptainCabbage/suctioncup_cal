@@ -72,6 +72,7 @@ class Calibration():
         # record the cartesian and wrench
         self.bag.write('position', pos_data)
         self.bag.write('wrench', wrench_data)
+        print('recorded.')
 
     def auto_calibration(self,init_cartesian, max_p_rate, max_angle, iter):
         #given some p
