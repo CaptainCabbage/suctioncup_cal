@@ -21,6 +21,7 @@ Z_low = 422
 Z_high = 439
 
 #
+MAX_ANGLE = 8
 ITER_NUM = 20
 RANDOM_SEED = 0
 
