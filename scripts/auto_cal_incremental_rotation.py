@@ -31,7 +31,7 @@ class Calibration():
         rospy.loginfo('Waiting for services...')
         self.lock = Lock()
         rospy.init_node('suctioncup_cal_rotation', anonymous=True, disable_signals=True)
-        robot_ns = "/abb120" #TODO figure this out
+        robot_ns = "/abb120"
 
         rospy.wait_for_service(robot_ns + '/robot_SetWorkObject')
 
@@ -40,9 +40,6 @@ class Calibration():
         self.robot_GetCartesian = rospy.ServiceProxy(robot_ns + '/robot_GetCartesian', robot_GetCartesian)
         self.netft_subscriber = rospy.Subscriber('/netft/data', WrenchStamped, self.force_torque_callback)
         rospy.loginfo('All services registered.')
-
-        # Initialize the robot
-        #self.robot_SetSpeed(50,50) #TODO: set robot speed to be slow
 
         pos = self.robot_GetCartesian()
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
