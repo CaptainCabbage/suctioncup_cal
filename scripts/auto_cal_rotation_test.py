@@ -14,7 +14,7 @@ from geometry_msgs.msg import *
 from threading import Lock
 
 # vary among grippers, figure this out before experiments
-GRIPPER_LENGTH = 135
+GRIPPER_LENGTH = 165
 RATE = 0.2857 # corresponding tangential translation rate to z change
 Z_ref = 421.5
 Z_low = 422
@@ -39,6 +39,10 @@ class RotationTest():
         self.robot_GetCartesian = rospy.ServiceProxy(robot_ns + '/robot_GetCartesian', robot_GetCartesian)
         self.netft_subscriber = rospy.Subscriber('/netft/data', WrenchStamped, self.force_torque_callback)
         rospy.loginfo('All services registered.')
+
+        bagname = 'suctioncup_cal_rotation_test'+ str(int(time.time())) + '.bag'
+        print("Recording bag with name: {0}".format(bagname))
+        self.bag = rosbag.Bag(bagname, mode='w')
 
         pos = self.robot_GetCartesian()
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
@@ -68,12 +72,12 @@ class RotationTest():
             dr = 2*(np.random.rand(1,2)-0.5)
             dr = np.append(dr/np.linalg.norm(dr),0)
             print('Randomly sampled rotational direction:', dr)
-            angle = int(raw_input('Please input your desired rotational angle:'))
+            angle = float(raw_input('Please input your desired rotational angle:'))
             print('Rotation angle: ', angle)
-            dt = int(raw_input('Please input your desired translational distance normal to rotational direction:'))
+            dt = float(raw_input('Please input your desired translational distance normal to rotational direction:'))
             dp = dt*np.array([-dr[1],dr[0]])
             print('tangential translation: ', dt)
-            dz = int(raw_input('Please input your desired dz:'))
+            dz = float(raw_input('Please input your desired dz:'))
             dp = np.append(dp,dz)
 
             dR = tr.rotation_matrix(angle*np.pi/180, dr)
@@ -87,18 +91,22 @@ class RotationTest():
             self.go(p_new)
             raw_input('press enter to go back')
             self.go(p)
-            flag = int(raw_input('Is this configuration ok? Input 1 to record this configuration, 2 to reset.'))
+            flag = int(raw_input('Input 1 to record this configuration, 2 to reset:'))
             if flag == 1:
                 self.go(p_new)
                 self.record(i)
                 self.go(p)
-            if flag == 2:
+            elif flag == 2:
                 self.go(self.reset_cartesian)
                 self.go(p)
+            else:
+                print('You entered number other than 1,2 we will reset and this test will be discarded.')
+                self.go(self.reset_cartesian)
 
         print('Test finished, stop recording.')
         self.bag.close()
         self.netft_subscriber.unregister()
+        self.go(self.init_cartesian)
         return
 
     def go(self, p):
