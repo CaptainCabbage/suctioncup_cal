@@ -82,7 +82,7 @@ class Calibration():
         #given some p
         # go_and_record
         print('Start auto-calibration.')
-        bagname = 'suctioncup_cal_translation'+ str(int(time.time())) + '.bag'
+        bagname = 'suctioncup_cal_translation_incremental'+ str(int(time.time())) + '.bag'
         print("Recording bag with name: {0}".format(bagname))
         self.bag = rosbag.Bag(bagname, mode='w')
 
@@ -96,7 +96,7 @@ class Calibration():
 
         quat0 = init_cartesian[3:7]
         np.random.seed(RANDOM_SEED)
-        
+
         # go back to initial position every time
         print('Test with incrementally increase z:')
         dz = 0
@@ -105,13 +105,13 @@ class Calibration():
         while dz < Z_high - Z_low:
 
             # without any tangential translation
-            dz_cur = dz[i] + Z_low -init_cartesian[2]]
+            dz_cur = dz + Z_low -init_cartesian[2]
             dp = np.array([0,0,dz_cur])
             pos0 = dp + init_cartesian[0:3]
             print("Please check the robot position:")
             p0 = np.append(pos0,quat0)
-            raw_input(p0)
-            #print(p_new)
+            #raw_input(p0)
+            print(p_new)
             self.go_and_record(p0, i+1)
             i = i+1
 
@@ -122,12 +122,12 @@ class Calibration():
                 for k in range(N_SAMPLE):
                     # compute p
                     dp = dt_v[j]*dt[j*N_SEP+k]/np.linalg.norm(dt[j*N_SEP+k])
-                    dp = np.append(dp,z_cur)
+                    dp = np.append(dp,dz_cur)
                     pos_i = dp + init_cartesian[0:3]
                     print("Please check the robot position:")
                     p_new = np.append(pos_i,quat0)
-                    raw_input(p_new)
-                    #print(p_new)
+                    #raw_input(p_new)
+                    print(p_new)
                     self.go_and_record(p_new, i+1)
                     i = i+1
                     self.robot_SetCartesian(*p0)
