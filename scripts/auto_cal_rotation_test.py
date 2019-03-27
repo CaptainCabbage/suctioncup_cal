@@ -56,28 +56,33 @@ class RotationTest():
     def test(self):
         np.random.seed(RANDOM_SEED)
         print('Start rotation limit test.')
-        iter = int(raw_input('Please enter the number of test:'))
-        print('Total test time:', iter)
+        iter = int(raw_input('Please enter the number of test: '))
+        print('Total test time:',end =" "
+        print(iter)
 
         R0 = tr.quaternion_matrix(self.init_cartesian[3:7])
         for i in range(iter):
-            print('Test', i)
-            Z_cur = int(raw_input('Please input your inital z (422 - 437):'))
+            print('Test',end =" ")
+            print(i)
+            Z_cur = float(raw_input('Please input your inital z (422 - 437): '))
             p = self.init_cartesian
             p[2] = Z_cur
-            print('Press enter to confirm the position: ',p)
-            raw_input()
+            #print('Press enter to confirm the position: ',p)
+            #raw_input()
             self.go(p)
 
             dr = 2*(np.random.rand(1,2)-0.5)
             dr = np.append(dr/np.linalg.norm(dr),0)
-            print('Randomly sampled rotational direction:', dr)
-            angle = float(raw_input('Please input your desired rotational angle:'))
-            print('Rotation angle: ', angle)
-            dt = float(raw_input('Please input your desired translational distance normal to rotational direction:'))
-            dp = dt*np.array([-dr[1],dr[0]])
-            print('tangential translation: ', dt)
-            dz = float(raw_input('Please input your desired dz:'))
+            print('Randomly sampled rotational axis:', end =" ")
+            print(dr)
+            angle = float(raw_input('Please input your desired rotational angle: '))
+            print('Rotation angle: ', end =" ")
+            print(angle)
+            dt = float(raw_input('Please input your desired translational distance perpendicular to rotational axis: '))
+            dp = dt*np.array([dr[1],-dr[0]])
+            print('Tangential translation: ',end =" ")
+            print(dt)
+            dz = float(raw_input('Please input your desired dz: '))
             dp = np.append(dp,dz)
 
             dR = tr.rotation_matrix(angle*np.pi/180, dr)
@@ -86,12 +91,12 @@ class RotationTest():
             quat_i = tr.quaternion_from_matrix(R)
             pos_i = dp + dp_compensate + p[0:3]
             p_new = np.append(pos_i,quat_i)
-            print("Please check the robot position, press enter to confirm:")
+            print("Check the robot position, press Enter to confirm: ")
             raw_input(p_new)
             self.go(p_new)
-            raw_input('press enter to go back')
+            raw_input('Press Enter to go back: ')
             self.go(p)
-            flag = int(raw_input('Input 1 to record this configuration, 2 to reset:'))
+            flag = int(raw_input('Input 1 to record this configuration, 2 to reset: '))
             if flag == 1:
                 self.go(p_new)
                 self.record(i)
@@ -110,14 +115,14 @@ class RotationTest():
         return
 
     def go(self, p):
-        print('Go')
+        print('Go to:', end =" ")
+        print(p)
         self.robot_SetCartesian(*p)
         rospy.sleep(5)
 
     def record(self, seqid):
         pos = self.robot_GetCartesian()
         time_now = rospy.Time.now()
-        print('recording data...')
         pos_data = to_poseStamped(time_now,seqid,[pos.x, pos.y, pos.z], [pos.q0, pos.qx, pos.qy, pos.qz])
         wrench_data = self.cur_wrench
         wrench_data.header.seq = seqid
@@ -126,6 +131,7 @@ class RotationTest():
         # record the cartesian and wrench
         self.bag.write('position', pos_data)
         self.bag.write('wrench', wrench_data)
+        print('Data recorded.')
 
     def force_torque_callback(self,data):
         with self.lock:
