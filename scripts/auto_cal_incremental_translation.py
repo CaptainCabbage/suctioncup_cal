@@ -23,7 +23,7 @@ Z_high = 436
 
 #
 MAX_ANGLE = 8
-DELTA_Z = 0.5
+DELTA_Z = 1
 RANDOM_SEED = 100
 N_SEP = 5
 N_SAMPLE = 5
@@ -111,7 +111,7 @@ class Calibration():
             print("Please check the robot position:")
             p0 = np.append(pos0,quat0)
             #raw_input(p0)
-            print(p_new)
+            print(p0)
             self.go_and_record(p0, i+1)
             i = i+1
 
