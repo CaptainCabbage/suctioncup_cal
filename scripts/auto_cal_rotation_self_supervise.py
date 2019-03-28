@@ -17,15 +17,17 @@ from threading import Lock
 GRIPPER_LENGTH = 165
 RATE = 0.2857 # corresponding tangential translation rate to z change
 Z_ref = 421.5
-Z_low = 422
+Z_low = 423
 Z_high = 437
 Z_reset = 445
 delta_z = 1
-delta_angle = 0.5
+n_angle = 5
 ITER = 5
 
 #
 RANDOM_SEED = 0
+
+np.set_printoptions(precision=4, suppress=True)
 
 class RotationTest():
 
@@ -43,7 +45,7 @@ class RotationTest():
         self.netft_subscriber = rospy.Subscriber('/netft/data', WrenchStamped, self.force_torque_callback)
         rospy.loginfo('All services registered.')
 
-        bagname = 'suctioncup_cal_rotation_test'+ str(int(time.time())) + '.bag'
+        bagname = 'suctioncup_cal_rotation_self'+ str(int(time.time())) + '.bag'
         print("Recording bag with name: {0}".format(bagname))
         self.bag = rosbag.Bag(bagname, mode='w')
 
@@ -132,6 +134,7 @@ class RotationTest():
         i = 0
         count = 0
         seqid = 0
+        R0 = tr.quaternion_matrix(self.init_cartesian[3:7])
 
 
         while Z_cur < Z_high:
@@ -144,22 +147,26 @@ class RotationTest():
             seqid = seqid + 1
 
             angle_max = angle_all[i]
+            delta_angle = angle_max/n_angle
             angle = delta_angle
 
             while angle < angle_max + 0.1:
                 print('Rotation angle: '),
-                print(angle_i)
-                dt_random = np.sin(angle_i*np.pi/180)*np.random.random(ITER)
-                dz_random = -np.sin(angle_i*np.pi/180)*np.random.random(ITER)
+                print(angle)
+                dt_random = np.sin(angle*np.pi/180)*np.random.random(ITER)
+                dz_random = -np.sin(angle*np.pi/180)*np.random.random(ITER)
                 for j in range(ITER):
+                    print('NEW TEST:')
                     dt = dt_random[j]
                     dz = dz_random[j]
                     dr = 2*(np.random.rand(1,2)-0.5)
                     dr = np.append(dr/np.linalg.norm(dr),0)
-                    print('Randomly sampled rotational axis:'),#, end =" ")
-                    print(dr)
-                    print('Tangential translation: '),#,end =" ")
-                    print(dt)
+                    print('Random Sampled: Rotational axis:'),#, end =" ")
+                    print(dr),
+                    print('; Tangential translation: '),#,end =" ")
+                    print(dt),
+                    print('; dz:'),
+                    print(dz)
                     dp = np.append(dt*np.array([dr[1],-dr[0]]),dz)
                     dR = tr.rotation_matrix(angle*np.pi/180, dr)
                     dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
@@ -167,11 +174,13 @@ class RotationTest():
                     quat_i = tr.quaternion_from_matrix(R)
                     pos_i = dp + dp_compensate + p[0:3]
                     p_new = np.append(pos_i,quat_i)
-                    print("Check the robot position, press Enter to confirm: ")
-                    raw_input(p_new)
+                    print("Check the computed robot position"),# press Enter to confirm: ")
+                    print(p_new)
+                    #raw_input(p_new)
                     wrench_0 = self.cur_wrench
                     self.go(p_new)
-                    raw_input('Press Enter to go back: ')
+                    #raw_input('Press Enter to go back: ')
+                    print('Go back to initial position to check force...')
                     self.go(p)
 
                     if cmp_netftdata(wrench_0, self.cur_wrench):
@@ -252,11 +261,13 @@ def to_wrenchStamped(t, seqid, f, tau):
     return wrenchs
 
 def cmp_netftdata(w0, w1):
-    thr = np.array([0.2,0.2,0.2,0.2,0.2,0.2])
+    thr = np.array([0.35,0.35,1,0.035,0.035,0.02])
 
     d0 = np.array([w0.wrench.force.x,w0.wrench.force.y,w0.wrench.force.z,w0.wrench.torque.x,w0.wrench.torque.y,w0.wrench.torque.z])
     d1 = np.array([w1.wrench.force.x,w1.wrench.force.y,w1.wrench.force.z,w1.wrench.torque.x,w1.wrench.torque.y,w1.wrench.torque.z])
     d = np.abs(d0 - d1)
+    print('wrench error'),
+    print(d)
     r = d > thr
 
     if np.sum(r) > 0:
