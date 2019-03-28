@@ -127,7 +127,8 @@ class RotationTest():
 
     def self_supervise(self):
         angle_all = 2*np.ones([16])
-        angle_all[0:3] = 1
+        angle_all[0] = 0.5
+        angle_all[1:3] = 1
         angle_all[11:16] = 3
 
         Z_cur = Z_low
