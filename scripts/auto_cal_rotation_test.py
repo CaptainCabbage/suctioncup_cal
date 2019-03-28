@@ -46,7 +46,7 @@ class RotationTest():
 
         pos = self.robot_GetCartesian()
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
-        print('initial cartesian: ')
+        print('initial cartesian: '),
         print(p)
         self.robot_SetCartesian(*p)
         self.init_cartesian = p
@@ -57,12 +57,12 @@ class RotationTest():
         np.random.seed(RANDOM_SEED)
         print('Start rotation limit test.')
         iter = int(raw_input('Please enter the number of test: '))
-        print('Total test time:',end =" "
+        print('Total test time:'),#,end =" ")
         print(iter)
 
         R0 = tr.quaternion_matrix(self.init_cartesian[3:7])
         for i in range(iter):
-            print('Test',end =" ")
+            print('Test'),#,end =" ")
             print(i)
             Z_cur = float(raw_input('Please input your inital z (422 - 437): '))
             p = self.init_cartesian
@@ -73,14 +73,14 @@ class RotationTest():
 
             dr = 2*(np.random.rand(1,2)-0.5)
             dr = np.append(dr/np.linalg.norm(dr),0)
-            print('Randomly sampled rotational axis:', end =" ")
+            print('Randomly sampled rotational axis:'),#, end =" ")
             print(dr)
             angle = float(raw_input('Please input your desired rotational angle: '))
-            print('Rotation angle: ', end =" ")
+            print('Rotation angle: '),#, end =" ")
             print(angle)
             dt = float(raw_input('Please input your desired translational distance perpendicular to rotational axis: '))
             dp = dt*np.array([dr[1],-dr[0]])
-            print('Tangential translation: ',end =" ")
+            print('Tangential translation: '),#,end =" ")
             print(dt)
             dz = float(raw_input('Please input your desired dz: '))
             dp = np.append(dp,dz)
@@ -115,7 +115,7 @@ class RotationTest():
         return
 
     def go(self, p):
-        print('Go to:', end =" ")
+        print('Go to:'),#, end =" ")
         print(p)
         self.robot_SetCartesian(*p)
         rospy.sleep(5)
