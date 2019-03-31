@@ -19,23 +19,29 @@ rospy.init_node('suctioncup_openloop', anonymous=True, disable_signals=True)
 robot_ns = "/abb120"
 rospy.wait_for_service(robot_ns + '/robot_SetWorkObject')
 
-self.robot_SetSpeed = rospy.ServiceProxy(robot_ns + '/robot_SetSpeed', robot_SetSpeed)
-self.robot_SetCartesian = rospy.ServiceProxy(robot_ns + '/robot_SetCartesian', robot_SetCartesian)
-self.robot_GetCartesian = rospy.ServiceProxy(robot_ns + '/robot_GetCartesian', robot_GetCartesian)
+robot_SetSpeed = rospy.ServiceProxy(robot_ns + '/robot_SetSpeed', robot_SetSpeed)
+robot_SetCartesian = rospy.ServiceProxy(robot_ns + '/robot_SetCartesian', robot_SetCartesian)
+robot_GetCartesian = rospy.ServiceProxy(robot_ns + '/robot_GetCartesian', robot_GetCartesian)
 rospy.loginfo('All services registered.')
 
-pos = self.robot_GetCartesian()
+pos = robot_GetCartesian()
 p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
 print('initial cartesian: ')
 print(p)
-self.robot_SetCartesian(*p)
-self.robot_SetSpeed(50,50)
+robot_SetCartesian(*p)
+robot_SetSpeed(20,20)
 
 # read csv file, the robot end traj (need the transfer from rigid end to robot end!!!!)
 filename = "robot_trajectory.csv"
 a = np.loadtxt(open(filename , "rb"), delimiter=",")
 traj = a.T
 N = traj.shape[0]
+p0 = p;
+p0[0] = traj[0][0]
+p0[1] = traj[0][1]
+print("Please check the robot position:")
+raw_input(p0)
+robot_SetCartesian(*p0)
 for i in range(N):
     pi = traj[i]
     print("Please check the robot position:")
