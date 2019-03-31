@@ -32,10 +32,10 @@ self.robot_SetCartesian(*p)
 self.robot_SetSpeed(50,50)
 
 # read csv file, the robot end traj (need the transfer from rigid end to robot end!!!!)
-filename = ".csv"
-a = numpy.loadtxt(open(filename , "rb"), delimiter=",")
+filename = "robot_trajectory.csv"
+a = np.loadtxt(open(filename , "rb"), delimiter=",")
 traj = a.T
-
+N = traj.shape[0]
 for i in range(N):
     pi = traj[i]
     print("Please check the robot position:")
