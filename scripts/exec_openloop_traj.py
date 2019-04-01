@@ -29,14 +29,14 @@ p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
 print('initial cartesian: ')
 print(p)
 robot_SetCartesian(*p)
-robot_SetSpeed(60,60)
+robot_SetSpeed(100,100)
 
 # read csv file, the robot end traj (need the transfer from rigid end to robot end!!!!)
 filename = "robot_trajectory.csv"
 a = np.loadtxt(open(filename , "rb"), delimiter=",")
 traj = a.T
 #N = traj.shape[0]
-N = 30
+N = 70
 p0 = p;
 p0[0] = traj[0][0]
 p0[1] = traj[0][1]
@@ -50,14 +50,16 @@ pi = traj[0]
 print('Go to: '),
 print(pi)
 robot_SetCartesian(*pi)
-robot_SetSpeed(30,30)
+#robot_SetSpeed(30,30)
+raw_input('Go to turn on the compressed air!')
 for i in range(N):
     pi = traj[i]
+    pi[2] = pi[2] -0.5
     #print("Please check the robot position:")
     #raw_input(pi)
     print('Go to: '),
     print(pi)
     robot_SetCartesian(*pi)
-    rospy.sleep(0.5)
+    #rospy.sleep(0.5)
 
 print("Traj execution stopped")
