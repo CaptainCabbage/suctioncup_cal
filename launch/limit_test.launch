@@ -1,3 +1,0 @@
-<launch>
-    <include file="$(find netft_rdt_driver)/launch/netft.launch" />
-</launch>

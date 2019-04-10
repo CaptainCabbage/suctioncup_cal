@@ -60,6 +60,7 @@ class RotationTest():
         self.reset_cartesian = [pos.x, pos.y, Z_reset, pos.q0, pos.qx, pos.qy, pos.qz]
         rospy.loginfo('Initialized.')
         np.random.seed(RANDOM_SEED)
+        self.robot_SetSpeed(5,5)
 
     def test(self):
 
@@ -172,6 +173,7 @@ class RotationTest():
                     print(dz)
                     dp = np.append(dt*np.array([dr[1],-dr[0]]),dz)
                     dR = tr.rotation_matrix(angle*np.pi/180, dr)
+
                     dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
                     R = np.dot(R0,dR)
                     quat_i = quat_tr2ros(tr.quaternion_from_matrix(R))
@@ -211,16 +213,14 @@ class RotationTest():
         return
 
     def self_supervise_large_angle(self):
-        angle_all = 5*np.ones([9])
-        angle_all[0] = 2
-        angle_all[1:3] = 3
+        angle_all = 5*np.ones([15])
+        angle_all[0] = 3
 
-        Z_cur = Z_low + 6
+        Z_cur = Z_low + 1
         i = 0
         count = 0
         seqid = 0
         R0 = tr.quaternion_matrix(quat_ros2tr(self.init_cartesian[3:7]))
-
 
         while Z_cur < Z_high:
             l = Z_cur - Z_zero
@@ -241,8 +241,8 @@ class RotationTest():
                 print(angle)
                 dt_bending = 0.5*l*angle*np.pi/180
                 dz_bending = l - np.sqrt(l**2 - dt_bending**2)
-                dt_random = dt_bending*(0.5+np.random.random(ITER))
-                dz_random = -dz_bending*(0.5+np.random.random(ITER))
+                dt_random = dt_bending*(2*np.random.random(ITER)-0.5)
+                dz_random = -dz_bending*(2*np.random.random(ITER)-0.5)
                 for j in range(ITER):
                     print('NEW TEST:')
                     dt = dt_random[j]
@@ -257,25 +257,29 @@ class RotationTest():
                     print(dz)
                     dp = np.append(dt*np.array([dr[1],-dr[0]]),dz)
                     dR = tr.rotation_matrix(angle*np.pi/180, dr)
-                    dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
                     R = np.dot(R0,dR)
+                    dp_compensate = np.dot(R0[0:3,0:3],np.array([0,0,GRIPPER_LENGTH]))-np.dot(R[0:3,0:3],np.array([0,0,GRIPPER_LENGTH]))
                     quat_i = quat_tr2ros(tr.quaternion_from_matrix(R))
-                    pos_i = dp + dp_compensate + p[0:3]
+                    pos_i = np.add(np.add(np.dot(R0[0:3,0:3],dp) , p[0:3]),dp_compensate)
                     p_new = np.append(pos_i,quat_i)
-                    print("Check the computed robot position, press Enter to confirm: ")
-                    #print(p_new)
-                    raw_input(p_new)
+                    print("Check the computed robot position"),# press Enter to confirm: ")
+                    print(p_new)
+                    #raw_input(p_new)
                     wrench_0 = self.cur_wrench
                     self.go(p_new)
-                    raw_input('Press Enter to go back: ')
+                    pos_data,wrench_data = self.backup_current_data(seqid)
+                    #raw_input('Press Enter to go back: ')
                     print('Go back to initial position to check force...')
                     self.go(p)
 
                     if cmp_netftdata(wrench_0, self.cur_wrench):
                         print('Good test, record data now.')
+                        '''
                         self.go(p_new)
                         self.record(seqid)
                         self.go(p)
+                        '''
+                        self.record_backup_data(pos_data,wrench_data)
                         seqid = seqid + 1
                         count = count + 1
                     else:
@@ -300,7 +304,21 @@ class RotationTest():
         print('Go to:'),#, end =" ")
         print(p)
         self.robot_SetCartesian(*p)
-        rospy.sleep(5)
+        rospy.sleep(2)
+
+    def backup_current_data(self, seqid):
+        pos = self.robot_GetCartesian()
+        time_now = rospy.Time.now()
+        pos_data = to_poseStamped(time_now,seqid,[pos.x, pos.y, pos.z], [pos.q0, pos.qx, pos.qy, pos.qz])
+        wrench_data = self.cur_wrench
+        wrench_data.header.seq = seqid
+        wrench_data.header.frame_id = 'ft_tool'
+        return pos_data, wrench_data
+
+    def record_backup_data(self, pos_data,wrench_data):
+        self.bag.write('position', pos_data)
+        self.bag.write('wrench', wrench_data)
+        print('Data recorded.')
 
     def record(self,seqid):
         pos = self.robot_GetCartesian()

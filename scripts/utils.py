@@ -29,13 +29,13 @@ def compute_increment(p1,p0):
 def quat_tr2ros(q_tr):
     # q_tr: x y z w
     # q_ros: w x y z
-    q_ros = np.zeros(q_tr.shape)
+    q_ros = np.zeros(4)
     q_ros[0]= q_tr[3]
-    q_ros[1:] =  q_tr[0:3]]
+    q_ros[1:] =  q_tr[0:3]
     return q_ros
 
 def quat_ros2tr(q_ros):
-    q_tr = np.zeros(q_ros.shape)
+    q_tr = np.zeros(4)
     q_tr[3]= q_ros[0]
-    q_tr[0:3] =  q_ros[1:]]
+    q_tr[0:3] =  q_ros[1:]
     return q_tr
