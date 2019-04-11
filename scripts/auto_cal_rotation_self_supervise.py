@@ -23,7 +23,7 @@ Z_low = 423
 Z_high = 437
 Z_reset = 445
 delta_z = 1
-n_angle = 5
+n_angle = 4
 ITER = 5
 
 #
@@ -213,8 +213,8 @@ class RotationTest():
         return
 
     def self_supervise_large_angle(self):
-        angle_all = 5*np.ones([15])
-        angle_all[0] = 3
+        angle_all = 10*np.ones([15])
+        angle_all[6:] = 20
 
         Z_cur = Z_low + 1
         i = 0
@@ -233,10 +233,10 @@ class RotationTest():
             seqid = seqid + 1
 
             angle_max = angle_all[i]
-            delta_angle = angle_max/n_angle
-            angle = angle_max/3
+            angle = 5
+            delta_angle = (angle_max-angle)/n_angle
 
-            while angle < angle_max + 0.1:
+            while angle < angle_max + delta_angle:
                 print('Rotation angle: '),
                 print(angle)
                 dt_bending = 0.5*l*angle*np.pi/180
