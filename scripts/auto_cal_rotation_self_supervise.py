@@ -128,91 +128,7 @@ class RotationTest():
         self.go(self.init_cartesian)
         return
 
-    def self_supervise(self):
-        angle_all = 2*np.ones([16])
-        angle_all[0] = 0.5
-        angle_all[1:3] = 1
-        angle_all[11:16] = 3
-
-        Z_cur = Z_low
-        i = 0
-        count = 0
-        seqid = 0
-        R0 = tr.quaternion_matrix(quat_ros2tr(self.init_cartesian[3:7]))
-
-
-        while Z_cur < Z_high:
-            print('Current z:'),
-            print(Z_cur)
-            p = self.init_cartesian
-            p[2] = Z_cur
-            self.go(p)
-            self.record(seqid)
-            seqid = seqid + 1
-
-            angle_max = angle_all[i]
-            delta_angle = angle_max/n_angle
-            angle = delta_angle
-
-            while angle < angle_max + 0.1:
-                print('Rotation angle: '),
-                print(angle)
-                dt_random = np.sin(angle*np.pi/180)*np.random.random(ITER)
-                dz_random = -np.sin(angle*np.pi/180)*np.random.random(ITER)
-                for j in range(ITER):
-                    print('NEW TEST:')
-                    dt = dt_random[j]
-                    dz = dz_random[j]
-                    dr = 2*(np.random.rand(1,2)-0.5)
-                    dr = np.append(dr/np.linalg.norm(dr),0)
-                    print('Random Sampled: Rotational axis:'),#, end =" ")
-                    print(dr),
-                    print('; Tangential translation: '),#,end =" ")
-                    print(dt),
-                    print('; dz:'),
-                    print(dz)
-                    dp = np.append(dt*np.array([dr[1],-dr[0]]),dz)
-                    dR = tr.rotation_matrix(angle*np.pi/180, dr)
-
-                    dp_compensate = np.array([0,0,-GRIPPER_LENGTH])-np.dot(dR[0:3,0:3],np.array([0,0,-GRIPPER_LENGTH]))
-                    R = np.dot(R0,dR)
-                    quat_i = quat_tr2ros(tr.quaternion_from_matrix(R))
-                    pos_i = dp + dp_compensate + p[0:3]
-                    p_new = np.append(pos_i,quat_i)
-                    print("Check the computed robot position"),# press Enter to confirm: ")
-                    print(p_new)
-                    #raw_input(p_new)
-                    wrench_0 = self.cur_wrench
-                    self.go(p_new)
-                    #raw_input('Press Enter to go back: ')
-                    print('Go back to initial position to check force...')
-                    self.go(p)
-
-                    if cmp_netftdata(wrench_0, self.cur_wrench):
-                        print('Good test, record data now.')
-                        self.go(p_new)
-                        self.record(seqid)
-                        self.go(p)
-                        seqid = seqid + 1
-                        count = count + 1
-                    else:
-                        print('Bad test, reset vacuum gripper.')
-                        self.go(self.reset_cartesian)
-                        self.go(p)
-                angle = angle + delta_angle
-
-            Z_cur = Z_cur + delta_z
-            i = i+1
-
-        self.bag.close()
-        print('Test finished, stop recording.')
-        print('Total valid test: '),
-        print(count)
-        self.netft_subscriber.unregister()
-        self.go(self.init_cartesian)
-        return
-
-    def self_supervise_large_angle(self):
+    def self_supervise_rotation(self):
         angle_all = 10*np.ones([15])
         angle_all[6:] = 20
 
@@ -385,4 +301,4 @@ def cmp_netftdata(w0, w1):
 if __name__ == '__main__':
     rt = RotationTest()
     rospy.sleep(1)
-    rt.self_supervise_large_angle()
+    rt.self_supervise_rotation()
