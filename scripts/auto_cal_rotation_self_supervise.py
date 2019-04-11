@@ -23,7 +23,7 @@ Z_low = 423
 Z_high = 437
 Z_reset = 445
 delta_z = 1
-n_angle = 4
+n_angle = 2
 ITER = 5
 
 #
@@ -129,8 +129,8 @@ class RotationTest():
         return
 
     def self_supervise_rotation(self):
-        angle_all = 10*np.ones([15])
-        angle_all[6:] = 20
+        angle_all = 20*np.ones([15])
+        angle_all[6:] = 30
 
         Z_cur = Z_low + 1
         i = 0
@@ -149,7 +149,7 @@ class RotationTest():
             seqid = seqid + 1
 
             angle_max = angle_all[i]
-            angle = 5
+            angle = angle_max - 5
             delta_angle = (angle_max-angle)/n_angle
 
             while angle < angle_max + delta_angle:
