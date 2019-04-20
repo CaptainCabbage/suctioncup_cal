@@ -22,12 +22,12 @@ Z_ref = 421.5
 Z_low = 423
 Z_high = 437
 Z_reset = 445
-delta_z = 1
-n_angle = 2
-ITER = 5
+delta_z = 0.5
+n_angle = 3
+ITER = 4
 
 #
-RANDOM_SEED = 0
+RANDOM_SEED = 500
 
 np.set_printoptions(precision=4, suppress=True)
 
@@ -47,7 +47,7 @@ class RotationTest():
         self.netft_subscriber = rospy.Subscriber('/netft/data', WrenchStamped, self.force_torque_callback)
         rospy.loginfo('All services registered.')
 
-        bagname = 'suctioncup_cal_rotation_self_large'+ str(int(time.time())) + '.bag'
+        bagname = 'suctioncup_cal_rotation_self_large_30_to_40degree_seed500_'+ str(int(time.time())) + '.bag'
         print("Recording bag with name: {0}".format(bagname))
         self.bag = rosbag.Bag(bagname, mode='w')
 
@@ -60,7 +60,7 @@ class RotationTest():
         self.reset_cartesian = [pos.x, pos.y, Z_reset, pos.q0, pos.qx, pos.qy, pos.qz]
         rospy.loginfo('Initialized.')
         np.random.seed(RANDOM_SEED)
-        self.robot_SetSpeed(5,5)
+        self.robot_SetSpeed(15,15)
 
     def test(self):
 
@@ -129,10 +129,11 @@ class RotationTest():
         return
 
     def self_supervise_rotation(self):
-        angle_all = 20*np.ones([15])
-        angle_all[6:] = 30
+        angle_all = 40*np.ones([100])
+        angle_all[0:8] = 30
+        #angle_all[6:] = 30
 
-        Z_cur = Z_low + 1
+        Z_cur = Z_low+3
         i = 0
         count = 0
         seqid = 0
@@ -149,23 +150,26 @@ class RotationTest():
             seqid = seqid + 1
 
             angle_max = angle_all[i]
-            angle = angle_max - 5
-            delta_angle = (angle_max-angle)/n_angle
+            angle = (angle_max-10)
+            delta_angle = (angle_max-angle)/(n_angle-1)
 
             while angle < angle_max + delta_angle:
-                print('Rotation angle: '),
-                print(angle)
+                #print('Rotation angle: '),
+                #print(angle)
                 dt_bending = 0.5*l*angle*np.pi/180
                 dz_bending = l - np.sqrt(l**2 - dt_bending**2)
-                dt_random = dt_bending*(2*np.random.random(ITER)-0.5)
-                dz_random = -dz_bending*(2*np.random.random(ITER)-0.5)
+                random_scale = 2*np.random.random(ITER)-0.5
+                dt_random = dt_bending*random_scale#*(2*np.random.random(ITER)-0.5)
+                dz_random = -dz_bending*(np.random.random(ITER))
                 for j in range(ITER):
-                    print('NEW TEST:')
+                    print('NEW TEST:'),
+                    print('Rotation angle: '),
+                    print(angle)
                     dt = dt_random[j]
                     dz = dz_random[j]
                     dr = 2*(np.random.rand(1,2)-0.5)
                     dr = np.append(dr/np.linalg.norm(dr),0)
-                    print('Random Sampled: Rotational axis:'),#, end =" ")
+                    print('Random Sampled Rotation axis:'),#, end =" ")
                     print(dr),
                     print('; Tangential translation: '),#,end =" ")
                     print(dt),
@@ -212,7 +216,7 @@ class RotationTest():
         print('Total valid test: '),
         print(count)
         self.netft_subscriber.unregister()
-        self.go(self.init_cartesian)
+        self.go(self.reset_cartesian)
         return
 
 
@@ -283,7 +287,7 @@ def to_wrenchStamped(t, seqid, f, tau):
     return wrenchs
 
 def cmp_netftdata(w0, w1):
-    thr = np.array([0.35,0.35,1,0.035,0.035,0.02])
+    thr = np.array([0.5,0.5,2,0.08,0.08,0.03])
 
     d0 = np.array([w0.wrench.force.x,w0.wrench.force.y,w0.wrench.force.z,w0.wrench.torque.x,w0.wrench.torque.y,w0.wrench.torque.z])
     d1 = np.array([w1.wrench.force.x,w1.wrench.force.y,w1.wrench.force.z,w1.wrench.torque.x,w1.wrench.torque.y,w1.wrench.torque.z])
