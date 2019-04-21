@@ -47,7 +47,7 @@ robot_SetCartesian(*p0)
 print("Please check all robot positions:")
 raw_input(traj[0:N+1])
 pi = traj[0]
-pi[2] = pi[2] + 0.5
+#pi[2] = pi[2] + 0.5
 print('Go to: '),
 print(pi)
 robot_SetCartesian(*pi)
@@ -55,9 +55,9 @@ robot_SetCartesian(*pi)
 raw_input('Go to turn on the compressed air!')
 for i in range(N):
     pi = traj[i]
-    pi[2] = pi[2] + 0.5
-    #print("Please check the robot position:")
-    #raw_input(pi)
+    #pi[2] = pi[2] + 0.5
+    print("Please check the robot position:")
+    raw_input(pi)
     print('Go to: '),
     print(pi)
     robot_SetCartesian(*pi)
