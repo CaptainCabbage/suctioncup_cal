@@ -6,21 +6,11 @@ from utils import *
 import tf.transformations as tr
 from sklearn.neighbors import NearestNeighbors
 from sklearn.linear_model import LinearRegression
+#import np.matlib
 import numpy as np
+#from autograd import jacobian
 import json
 from sympy import *
-
-import rospy
-from robot_comm.msg import robot_CartesianLog
-from robot_comm.srv import *
-import random
-import math
-import rosbag
-import time
-import csv
-from std_msgs.msg import *
-from geometry_msgs.msg import *
-from threading import Lock
 
 class Controller():
     def __init__(self, horizon):
@@ -235,21 +225,24 @@ class abbRobot():
         self.netft_subscriber = rospy.Subscriber('/netft/data', WrenchStamped, self.force_torque_callback)
         rospy.loginfo('All services registered.')
 
-        p = self.get_current_cartesian()
+        pos = robot_GetCartesian()
+        p = [pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
         print('initial cartesian: ')
         print(p)
         self.SetCartesian(*p)
         print('Robot speed set to slow.')
         self.SetSpeed(10, 10)
 
-    def go(self, p):
-        self.SetCartesian(*p)
+    def go(self,p):
+        self.setCartesian(*p)
 
     def force_torque_callback(self,data):
         with self.lock:
             new = np.array([data.wrench.force.x,data.wrench.force.y,data.wrench.force.z,data.wrench.torque.x, data.wrench.torque.y,data.wrench.torque.z])
-            self.cur_wrenches[0:9] = self.cur_wrenches[1:10]
-            self.cur_wrenches[-1] = new
+            pre_wrench = self.cur_wrenches
+            self.cur_wrenches = zeros([10,6])
+            self.cur_wrenches[0:9] = pre_wrench[1:10]
+            self.cur_wrenches[9] = new
 
     def current_ft(self):
         return np.mean(self.cur_wrenches,axis=0)
@@ -258,6 +251,9 @@ class abbRobot():
         pos = self.GetCartesian()
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
         return p
+
+    def go(self):
+        pass
 
 class taskModel():
 
@@ -459,7 +455,7 @@ class taskModel():
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[3:7],x[3:7])},
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[10:14],x[10:14])})
         #res = minimize(energy, x0, method='SLSQP', tol=1e-4, jac=jac_energy, constraints=cons)
-        opts = {'maxiter':100}
+        opts = {'maxiter':1000}
         res = minimize(cost, x0,tol=0.1, constraints=cons,  options=opts)
         print('status:',res.status,', iter:',res.nit, ', fun:',res.fun)
         return res.x[7:14]
@@ -631,7 +627,7 @@ class taskModel():
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[3:7],x[3:7])},
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[10:14],x[10:14])})
         #res = minimize(energy, x0, method='SLSQP', tol=1e-4, jac=jac_energy, constraints=cons)
-        opts = {'maxiter':100}
+        opts = {'maxiter':600}
         res = minimize(energy, x0,tol=0.1, constraints=cons,  options=opts)
         print('status:',res.status,', iter:',res.nit, ', fun:',res.fun)
         return res.x
@@ -821,5 +817,5 @@ class taskModel():
     def robot2actual(self,p_rigid):
         p_actual = np.zeros(7)
         p_actual[3:]=p_rigid[3:]
-        p_actual[0:3] = p_rigid[0:3] - np.dot(quat2rotm(p_rigid[3:]),[0,0,self.gripper_length]) + self.origin.reshape(-1)
+        p_actual[0:3] = p_rigid[0:3] - np.dot(quat2rotm(p_rigid[3:]),[0,0,self.gripper_length]) + self.origin
         return p_actual

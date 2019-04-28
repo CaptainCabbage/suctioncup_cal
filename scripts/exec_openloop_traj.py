@@ -14,6 +14,8 @@ from std_msgs.msg import *
 from geometry_msgs.msg import *
 from threading import Lock
 
+np.set_printoptions(precision=4, suppress=True)
+
 rospy.loginfo('Waiting for services...')
 rospy.init_node('suctioncup_openloop', anonymous=True, disable_signals=True)
 robot_ns = "/abb120"
@@ -29,13 +31,13 @@ p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
 print('initial cartesian: ')
 print(p)
 robot_SetCartesian(*p)
-robot_SetSpeed(10,10)
+robot_SetSpeed(5,5)
 
 # read csv file, the robot end traj (need the transfer from rigid end to robot end!!!!)
-filename = "robot_trajectory_cuboid.csv"
+filename = "robot_trajectory.csv"
 a = np.loadtxt(open(filename , "rb"), delimiter=",")
 traj = a.T
-N = int(traj.shape[0]*60/90)-1
+N = traj.shape[0]-4#int(traj.shape[0]*60/90)-1
 #N = 70
 p0 = p;
 p0[0] = traj[0][0]
@@ -47,7 +49,7 @@ robot_SetCartesian(*p0)
 print("Please check all robot positions:")
 raw_input(traj[0:N+1])
 pi = traj[0]
-#pi[2] = pi[2] + 0.5
+#pi[2] = pi[2] + 0.6
 print('Go to: '),
 print(pi)
 robot_SetCartesian(*pi)
@@ -55,7 +57,7 @@ robot_SetCartesian(*pi)
 raw_input('Go to turn on the compressed air!')
 for i in range(N):
     pi = traj[i]
-    #pi[2] = pi[2] + 0.5
+    #pi[2] = pi[2] + 0.6
     print("Please check the robot position:")
     raw_input(pi)
     print('Go to: '),
