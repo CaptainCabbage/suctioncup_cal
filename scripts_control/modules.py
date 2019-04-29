@@ -330,10 +330,12 @@ class taskModel():
         # observation
         self.act_traj[i] = robot_cartesian
         self.end_traj[i] = self.actual2robot(robot_cartesian)
+        #print('current robot:',self.end_traj[i])
         #ft_force = self.wrench_compensation(robot_ft,robot_cartesian[3:]) TODO change this back!!
 
         # estimation
         x_config_guess = self.vc_mapping.Mapping(ft_force.reshape(1,-1), 'wrench', 'config').reshape(-1)
+        #print('x_config_guess', x_config_guess)
 
         # use x-config guess from mapping(inaccurate) and reference obj traj (assume small error) to estimate the true state
         x = self.state_model(np.zeros(6), self.end_traj[i], x_config_guess, ft_force, self.ref_obj_traj[i])
@@ -346,6 +348,7 @@ class taskModel():
 
         self.obj_traj[i,0:3] = self.ref_obj_traj[i,0:3] + dp_obj
         self.obj_traj[i,3:] = quat_mul(dq_obj, self.ref_obj_traj[i,3:])
+        print('estimated obj', self.obj_traj[i])
 
         # compute config
         self.contact_traj[i,0:3] = np.dot(quat2rotm(self.obj_traj[i,3:]),self.pc) + self.obj_traj[i,0:3]
@@ -358,6 +361,7 @@ class taskModel():
 
     def position_optimal_control(self, ft_force):
         # return x_robot
+        print('OPTIMAL CONTROL')
 
         i = self.current_timestep
         x_obj_star = self.ref_obj_traj[i+1]
@@ -381,7 +385,8 @@ class taskModel():
 
         x_config_ = np.append(p_config_,rotm2exp(R_config_))
         K_config = self.vc_mapping.Kfx(x_config_.reshape(1, -1)) #force exert on the rigid end relative to rigid end pos change
-        K_spring = -K_config
+        #K_config = -np.diag([10,10,10,200,200,200])
+        K_spring = K_config
         f_spring = -f_config_
         q_robot_ = rotm2quat(R_robot_)
 
@@ -414,8 +419,8 @@ class taskModel():
             # env_constraints:
 
             # stick with env contact
-            eqn_env1 = np.sum((np.dot(R_obj,self.envc1) + p_obj - self.envc1_w)**2)
-            eqn_env2 = np.sum((np.dot(R_obj,self.envc2) + p_obj - self.envc2_w)**2)
+            eqn_env1 = np.sum((np.dot(R_obj,self.envc1) + p_obj  - self.envc1_w)**2)
+            eqn_env2 = np.sum((np.dot(R_obj,self.envc2) + p_obj  - self.envc2_w)**2)
 
             # quasi-static eqn
             f_co = np.dot(adjointTrans(self.Rc.T, -np.dot(self.Rc.T,0.001*self.pc)).T, -f_contact.reshape(-1))
@@ -440,10 +445,12 @@ class taskModel():
             p_robot=x[7:10]
             q_robot=x[10:14]/np.linalg.norm(x[10:14])
             q_obj = quat_mul(dq_obj,q_obj_)
-            c = np.dot(dp_obj,dp_obj) + np.dot(p_robot-ref_p_robot,p_robot-ref_p_robot) + 10*np.arccos(min(1,abs(np.dot(q_robot,ref_q_robot))))+np.arccos(min(1,abs(np.dot(q_obj,q_obj_))))
-            eqn_goal_q = np.dot(q_obj,q_obj_star) - 1
+            #c = np.dot(dp_obj,dp_obj) + 10*np.dot(p_robot-ref_p_robot,p_robot-ref_p_robot) + 50*np.arccos(min(1,abs(np.dot(q_robot,ref_q_robot))))+np.arccos(min(1,abs(np.dot(q_obj,q_obj_))))
+            cref = 5*np.dot(p_robot-ref_p_robot,p_robot-ref_p_robot) + 50*np.arccos(min(1,abs(np.dot(q_robot,ref_q_robot))))
+            cu = 5*np.dot(p_robot-x_robot_[0:3],p_robot-x_robot_[0:3]) + 50*np.arccos(min(1,abs(np.dot(q_robot,x_robot_[3:]))))
+            eqn_goal_q = 10*np.dot(q_obj,q_obj_star)
             eqn_goal_p = np.linalg.norm(p_obj_+dp_obj - p_obj_star)
-            c = c+10*eqn_goal_p+10*eqn_goal_q+np.linalg.norm(x[14:])
+            c = cref+ cu+ 20*(eqn_goal_p+eqn_goal_q)+(np.linalg.norm(x[14:16])+np.linalg.norm(x[17:19])-x[16]-x[19])
             return c
 
 
@@ -451,18 +458,28 @@ class taskModel():
         x0 = np.zeros(20)
         x0[0:3] = np.random.rand(3)/100
         x0[3:7]= np.array([1,0,0,0])
-        x0[7:14] = x_robot_
-
+        x0[7:14] = np.copy(x_robot_)
+        x0[16] = self.obj_m*self.gravity*0.5
+        x0[19] = self.obj_m*self.gravity*0.5
+        #bnds = ((-10,10),(-10,10),(-20,20),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None),(None,None))
+        #print('x0', x0)
+        print('eq_constraints x0', eq_constraints(x0))
         cons = ({"type": "eq", "fun": eq_constraints},
                 {"type": "ineq", "fun": lambda x: self.fric_mu * x[16] - np.linalg.norm(x[14:16])},
                 {"type": "ineq", "fun": lambda x: self.fric_mu * x[19] - np.linalg.norm(x[17:19])},
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[3:7],x[3:7])},
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[10:14],x[10:14])})
         #res = minimize(energy, x0, method='SLSQP', tol=1e-4, jac=jac_energy, constraints=cons)
-        opts = {'maxiter':100}
-        res = minimize(cost, x0,tol=0.1, constraints=cons,  options=opts)
+        opts = {'maxiter':500}
+        res = minimize(cost, x0,tol=0.05, constraints=cons,  options=opts)#, bounds = bnds)
         print('status:',res.status,', iter:',res.nit, ', fun:',res.fun)
-        return res.x[7:14]
+        #print('x res', res.x)
+        print('eq_constraints res', eq_constraints(res.x))
+        if res.status == 0:
+            u = res.x[7:14]
+        else:
+            u = x0[7:14]
+        return u
 
     def state_model(self,ut, x_robot_, x_config_, f_config_,x_obj_):
         # p_robot : the position of the rigid end
@@ -470,6 +487,11 @@ class taskModel():
         # return object position and contact force in the next timestep
         # pc: contact position relative to the object center
         # x_config: posistion + axis angle:  robot rigid end relative to the contact
+        print('STATE ESTIMATION:')
+        #print('x_robot_', x_robot_)
+        #print('x_config_', x_config_)
+        #print('f_config_', f_config_)
+        print('ref_obj_', x_obj_)
 
         p_robot_ = x_robot_[0:3]
         R_robot_ = quat2rotm(x_robot_[3:])
@@ -486,10 +508,12 @@ class taskModel():
         q_config_ = rotm2quat(R_config_)
 
         K_config = self.vc_mapping.Kfx(x_config_.reshape(1, -1)) #force exert on the rigid end relative to rigid end pos change
+        #K_config = -np.identity(6)*10
         K_spring = K_config
         f_spring = -f_config_
         #f_spring = np.ones(6)*0.1
         # solve for dp_obj, dq_obj, dp_config, dq_config
+        #print('K_spring', K_spring)
 
         def robot_constraints(x):
             dp_obj = x[0:3]
@@ -503,7 +527,6 @@ class taskModel():
             R_obj = quat2rotm(dq_obj)*quat2rotm(q_obj_)
             eqn_p = np.linalg.norm(p_obj_ + dp_obj + np.dot(R_obj,self.pc) + R_obj.dot(self.Rc.dot(p_config_ + dp_config)) - p_robot)
             return np.concatenate(([eqn_q], [eqn_p]))
-
 
         def jac_robot(x):
             dp_obj = x[0:3]
@@ -619,7 +642,11 @@ class taskModel():
         x0[7:10] = np.random.rand(3)/100
         x0[3:7]= np.array([1,0,0,0])
         x0[10:14] =np.array([1,0,0,0])
+        #bnds = ((-10,10),(-10,10),(-20,20),(None,None),(None,None),(None,None),(None,None),(-10,10),(-10,10),(-20,20),(None,None),(None,None),(None,None),(None,None))
         #cons=({"type":"eq","fun":env_constraints,"jac":jac_env},{"type":"eq","fun":robot_constraints,"jac":jac_robot})
+        #print('x0', x0)
+        #print('env_constraints x0', env_constraints(x0))
+        #print('robot_constraints x0', robot_constraints(x0))
         '''
         cons = ({"type": "eq", "fun": env_constraints,"jac":jac_env},
                 {"type": "eq", "fun": robot_constraints,"jac":jac_robot},
@@ -631,195 +658,32 @@ class taskModel():
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[3:7],x[3:7])},
                 {"type": "eq", "fun": lambda x:  1 - np.dot(x[10:14],x[10:14])})
         #res = minimize(energy, x0, method='SLSQP', tol=1e-4, jac=jac_energy, constraints=cons)
-        opts = {'maxiter':100}
-        res = minimize(energy, x0,tol=0.1, constraints=cons,  options=opts)
+        opts = {'maxiter':500}
+        res = minimize(energy, x0,tol=0.04, constraints=cons,  options=opts)#, bounds = bnds)
         print('status:',res.status,', iter:',res.nit, ', fun:',res.fun)
-        return res.x
-
-    def control_model(self, x_obj_star, x_robot_, p_config_, R_config_, f_config_,x_obj_):
-        # return x, x=[dp_obj, dq_obj, dp_robot, dq_robot,fenv1,fenv2]
-
-        p_obj_star = x_obj_star[0:3]
-        q_obj_star = x_obj_star[3:]
-        p_robot_ = x_robot_[0:3]
-        R_robot_ = quat2rotm(x_robot_[3:])
-        p_obj_ = x_obj_[0:3]
-        q_obj_ = x_obj_[3:]
-
-
-        x_config_ = np.append(p_config_,rotm2exp(R_config_))
-        K_config = self.vc_mapping.Kfx(x_config_.reshape(1, -1)) #force exert on the rigid end relative to rigid end pos change
-        K_spring = K_config
-        f_spring = -f_config_
-        q_robot_ = rotm2quat(R_robot_)
-
-        def eq_constraints(x):
-            #temp let the p_obj as the goal
-            dp_obj = x[0:3]
-            dq_obj = x[3:7]/np.linalg.norm(x[3:7])
-            dp_robot=x[7:10]
-            dq_robot=x[10:14]/np.linalg.norm(x[10:14])
-
-            # compute current states
-            p_robot = np.add(p_robot_, dp_robot)
-            q_robot = quat_mul(dq_robot,q_robot_)
-            R_robot = quat2rotm(q_robot)
-            p_obj = np.add(p_obj_, dp_obj)
-            q_obj = quat_mul(dq_obj,q_obj_)
-            R_obj = quat2rotm(q_obj)
-            # compute config
-            p_contact = np.dot(R_obj,self.pc)+p_obj
-            R_contact = np.dot(self.Rc,R_obj)
-            R_config = np.dot(R_contact.T, R_robot)
-            p_config = np.dot(R_contact.T,p_robot - p_contact)
-            x_config = np.append(p_config,rotm2exp(R_config))
-            f_contact = np.dot(-K_config,x_config-x_config_) + f_config_#self.vc_mapping.Mapping(x_config.reshape(1,-1), 'config', 'contact_wrench')
-
-            # goal_constraints: given robot position, temp
-            eqn_goal_q = np.dot(q_obj,q_obj_star) - 1
-            eqn_goal_p = np.linalg.norm(p_obj - p_obj_star)
-
-            # env_constraints:
-
-            # stick with env contact
-            eqn_env1 = np.sum((np.dot(R_obj,self.envc1) + p_obj - self.envc1_w)**2)
-            eqn_env2 = np.sum((np.dot(R_obj,self.envc2) + p_obj - self.envc2_w)**2)
-
-            # quasi-static eqn
-            f_co = np.dot(adjointTrans(self.Rc.T, -np.dot(self.Rc.T,0.001*self.pc)).T, -f_contact.reshape(-1))
-            G_o = np.concatenate((np.dot(R_obj.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0).T
-
-            ADG_env = np.zeros([6,6])
-            ADG_env[0:3,0:3] = R_obj.T
-            ADG_env[0:3,3:] = R_obj.T
-            ADG_env[3:,0:3] = np.dot(-skew_sym(0.001*self.envc1),R_obj.T)
-            ADG_env[3:,3:] = np.dot(-skew_sym(0.001*self.envc2), R_obj.T)
-            f_envo = np.dot(ADG_env,x[14:])
-            eqn_env_f = np.linalg.norm(f_co+G_o+f_envo)
+        #print('x res', x0)
+        print('env_constraints res', env_constraints(res.x))
+        print('robot_constraints res', robot_constraints(res.x))
+        if res.status == 0:
+            return_x = res.x
+        else:
+            return_x = np.zeros(14)
+            return_x[3:7]= np.array([1,0,0,0])
+            return_x[10:14] =np.array([1,0,0,0])
+        return return_x
 
 
-            #eqns = [eqn_goal_p,eqn_goal_q,eqn_env1,eqn_env2]
-            eqns = [ eqn_env1, eqn_env2, eqn_env_f]
-            return eqns
-
-        def ineq_constraints(x):
-            #temp let the p_obj as the goal
-            dp_obj = x[0:3]
-            dq_obj = x[3:7]/np.linalg.norm(x[3:7])
-            dp_robot=x[7:10]
-            dq_robot=x[10:14]/np.linalg.norm(x[10:14])
-
-            # compute current states
-            p_robot = np.add(p_robot_, dp_robot)
-            q_robot = quat_mul(dq_robot,q_robot_)
-            R_robot = quat2rotm(q_robot)
-            p_obj = np.add(p_obj_, dp_obj)
-            q_obj = quat_mul(dq_obj,q_obj_)
-            R_obj = quat2rotm(q_obj)
-            # compute config
-            p_contact = np.dot(R_obj,self.pc)+p_obj
-            R_contact = np.dot(self.Rc,R_obj)
-            R_config = np.dot(R_contact.T, R_robot)
-            p_config = np.dot(R_contact.T,p_robot - p_contact)
-            x_config = np.append(p_config,rotm2exp(R_config))
-            f_contact = self.vc_mapping.Mapping(x_config.reshape(1,-1), 'config', 'contact_wrench')
-
-            # env_constraints:
-
-            # maintain of contact: in firction cone
-            f_co = np.dot(adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc)).T, -f_contact.reshape(-1))
-            G_o = np.concatenate((np.dot(R_obj.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0).T
-            fo = -f_co-G_o
-            ADG_env = np.zeros([6,6])
-            ADG_env[0:3,0:3] = R_obj.T
-            ADG_env[0:3,3:] = R_obj.T
-            ADG_env[3:,0:3] = np.dot(-skew_sym(self.envc1),R_obj.T)
-            ADG_env[3:,3:] = np.dot(-skew_sym(self.envc2), R_obj.T)
-            f_envo = np.dot(ADG_env,x[14:])
-            eqn_env_f = np.linalg.norm(f_co+G_o+f_envo)
-            #f_env = np.dot(np.linalg.pinv(ADG_env),fo)
-
-            ineq_env1 = self.fric_mu*f_env[2] - np.linalg.norm(f_env[0:2]) # > 0
-            ineq_env2 = self.fric_mu * f_env[5] - np.linalg.norm(f_env[3:5])  # > 0
-
-            ineqs = [ineq_env1,ineq_env2]
-            return ineqs
-
-        def energy(x):
-            dp_obj = x[0:3]
-            dq_obj = x[3:7]/np.linalg.norm(x[3:7])
-            dp_robot=x[7:10]
-            dq_robot=x[10:14]/np.linalg.norm(x[10:14])
-
-            # compute current states
-            p_robot = np.add(p_robot_, dp_robot)
-            q_robot = quat_mul(dq_robot, q_robot_)
-            R_robot = quat2rotm(q_robot)
-            p_obj = np.add(p_obj_, dp_obj)
-            R_obj = quat_mul(dq_obj,q_obj_)
-            # compute config
-            p_contact = np.dot(R_obj,self.pc)+p_obj
-            R_contact = np.dot(self.Rc,R_obj)
-            R_config = np.dot(R_contact.T, R_robot)
-            p_config = np.dot(R_contact.T,p_robot - p_contact)
-            dp_config = p_config - p_config_
-            dR_config = np.dot(R_config,R_config_.T)
-
-            x_ = np.concatenate((dp_config,quat2exp(dR_config)))
-            d_energy = self.obj_m*self.gravity*dp_obj[2] + 0.5*np.dot(x_,np.dot(K_spring,x_)) + np.dot(f_spring,x_)
-
-            return d_energy
-
-        def cost(x):
-            dp_obj = x[0:3]
-            dq_obj = x[3:7]/np.linalg.norm(x[3:7])
-            dp_robot=x[7:10]
-            dq_robot=x[10:14]/np.linalg.norm(x[10:14])
-            q_robot = quat_mul(dq_robot,q_robot_)
-            q_obj = quat_mul(dq_obj,q_obj_)
-            c = np.dot(dp_obj,dp_obj) + np.dot(dp_robot,dp_robot) + np.arccos(min(1,abs(np.dot(q_robot,q_robot_))))+np.arccos(min(1,abs(np.dot(q_obj,q_obj_))))
-            eqn_goal_q = np.dot(q_obj,q_obj_star) - 1
-            eqn_goal_p = np.linalg.norm(p_obj_+dp_obj - p_obj_star)
-            c = c+10*eqn_goal_p+10*eqn_goal_q+np.linalg.norm(x[14:])
-            return c
-
-
-        np.random.seed(0)
-        x0 = np.zeros(20)
-        x0[0:3] = np.random.rand(3)/100
-        x0[7:10] = np.random.rand(3)/100
-        x0[3:7]= np.array([1,0,0,0])
-        x0[10:14] =np.array([1,0,0,0])
-
-        '''
-        cons = ({"type": "eq", "fun": eq_constraints},
-                {"type": "ineq", "fun": lambda x: self.fric_mu*x[16] - np.linalg.norm(x[14:16])},
-                {"type": "ineq", "fun": lambda x: self.fric_mu * x[19] - np.linalg.norm(x[17:19])},
-                {"type": "ineq", "fun": lambda x: x[16]},
-                {"type": "ineq", "fun": lambda x: x[19]},
-                {"type": "eq", "fun": lambda x:  1 - np.dot(x[3:7],x[3:7])},
-                {"type": "eq", "fun": lambda x:  1 - np.dot(x[10:14],x[10:14])})
-                '''
-        cons = ({"type": "eq", "fun": eq_constraints},
-                {"type": "ineq", "fun": lambda x: self.fric_mu * x[16] - np.linalg.norm(x[14:16])},
-                {"type": "ineq", "fun": lambda x: self.fric_mu * x[19] - np.linalg.norm(x[17:19])},
-                {"type": "eq", "fun": lambda x:  1 - np.dot(x[3:7],x[3:7])},
-                {"type": "eq", "fun": lambda x:  1 - np.dot(x[10:14],x[10:14])})
-        #res = minimize(energy, x0, method='SLSQP', tol=1e-4, jac=jac_energy, constraints=cons)
-        opts = {'maxiter':1000}
-        res = minimize(cost, x0,tol=0.08, constraints=cons,  options=opts)
-        print('status:',res.status,', iter:',res.nit, ', fun:',res.fun)
-        return res.x
-
-    def actual2robot(self,p_actual):
+    def actual2robot(self,p_actual_):
         # convert actual robot position to execute to robot rigid end position
+        p_actual = np.copy(p_actual_)
         p_rigid = np.zeros(7)
         p_rigid[3:] = p_actual[3:]
         p_rigid[0:3] = p_actual[0:3] + np.dot(quat2rotm(p_actual[3:]),[0,0,self.gripper_length]) - self.origin.reshape(-1)
         return p_rigid
 
-    def robot2actual(self,p_rigid):
-        p_actual = np.zeros(7)
-        p_actual[3:]=p_rigid[3:]
-        p_actual[0:3] = p_rigid[0:3] - np.dot(quat2rotm(p_rigid[3:]),[0,0,self.gripper_length]) + self.origin.reshape(-1)
-        return p_actual
+    def robot2actual(self, p_rigid_):
+        p_rigid = np.copy(p_rigid_)
+    	p_actual = np.zeros(7)
+    	p_actual[3:]=p_rigid[3:]
+    	p_actual[0:3] = p_rigid[0:3] - np.dot(quat2rotm(p_rigid[3:]),[0,0,self.gripper_length]) + self.origin.reshape(-1)
+    	return p_actual

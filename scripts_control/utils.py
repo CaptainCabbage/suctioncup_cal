@@ -115,7 +115,7 @@ def quat2exp(q):
     if q[0]**2 == 1:
         w = np.zeros(3)
     else:
-        w = q[1:]/((1-q[0]**2)**0.5)
+        w = 2*np.arccos(q[0])*q[1:]/((1-q[0]**2)**0.5)
     return w
 
 def exp2quat(x):
@@ -126,7 +126,7 @@ def exp2quat(x):
     return p
 
 def quat_conj(q):
-    q_conj = np.zeros
+    q_conj = np.zeros(4)
     q_conj[0] = q[0]
     q_conj[1:] = -q[1:]
     return q_conj
@@ -160,15 +160,17 @@ def posdef_estimation(A,B):
     P = np.dot(A.T,A)
     Q = np.dot(B.T,B)
     sigma_P_sq,U_P = np.linalg.eig(P)
+    sigma_P_sq[sigma_P_sq<=1e-10] = 1e-10
     #sigma_P_sq=np.real(sigma_P_sq)
     #U_P = np.real(U_P)
-    Sigma_P = np.diag(np.sqrt(abs(sigma_P_sq)))
+    Sigma_P = np.diag(np.sqrt(sigma_P_sq))
     Qt = np.linalg.multi_dot([Sigma_P, U_P.T, Q, U_P, Sigma_P])
     sigma_Qt_sq, U_Qt = np.linalg.eig(Qt)
+    sigma_Qt_sq[sigma_Qt_sq<=1e-10] = 1e-10
     #sigma_Qt_sq=np.real(sigma_Qt_sq)
     #U_Qt = np.real(U_Qt)
-    Sigma_Qt = np.diag(np.sqrt(abs(sigma_Qt_sq)))
-    X = np.linalg.multi_dot([U_P, np.diag(1/np.sqrt(abs(sigma_P_sq))), U_Qt, Sigma_Qt, U_Qt.T,np.diag(1/np.sqrt(abs(sigma_P_sq))),U_P.T])
+    Sigma_Qt = np.diag(np.sqrt(sigma_Qt_sq))
+    X = np.linalg.multi_dot([U_P, np.diag(1/np.sqrt(sigma_P_sq)), U_Qt, Sigma_Qt, U_Qt.T,np.diag(1/np.sqrt(sigma_P_sq)),U_P.T])
 
     return X
 
