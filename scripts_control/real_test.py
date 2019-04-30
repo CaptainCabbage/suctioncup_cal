@@ -3,8 +3,9 @@
 from modules import *
 
 np.set_printoptions(precision=4, suppress=True)
+np.random.seed(100)
 
-task_model = taskModel('vc_calibration.json','task_model2.json')
+task_model = taskModel('vc_calibration.json','task_model4.json')
 
 robot = abbRobot()
 robot.initialize()
@@ -17,16 +18,21 @@ print(p0)
 raw_input()
 
 robot.go(p0)
-raw_input('Please turn on vacuum')
+#raw_input('Please turn on vacuum')
 
 print('go to: '),
 print(task_model.ref_act_traj[0])
 robot.go(task_model.ref_act_traj[0])
-for i in range(task_model.total_timestep-1):
+robot.go(task_model.ref_act_traj[1])
+rospy.sleep(5)
+i=0
+while i < 14:#task_model.total_timestep-1:
+    print('timestep:',i,'angle', i*30/45)
     task_model.current_timestep = i
 
     robot_cartesian = robot.get_current_cartesian()
     cur_wrench = task_model.wrench_compensation(robot.current_ft(), robot_cartesian[3:])
+    print('cur wrench',cur_wrench)
 
     task_model.state_estimation(cur_wrench, robot_cartesian)
     ut = task_model.position_optimal_control(cur_wrench).reshape(-1)
@@ -45,11 +51,16 @@ for i in range(task_model.total_timestep-1):
     ut_bounded[3:] = quat_mul(du_q,u_pre[3:])
     print('ut',ut)
     print('ut_bounded',ut_bounded)
+
     robot_ut = task_model.robot2actual(ut_bounded)
     print('ref control input:', task_model.ref_act_traj[i+1])
-    print('control input: ', robot_ut,'press enter to confirm')
-    raw_input()
+    print('control input: ', robot_ut,'press enter to confirm, input 0 to reject')
+    #var = raw_input()
+    #if var == '0':
+    #    robot_ut = task_model.robot2actual(u_pre)
     robot.go(robot_ut)
+    rospy.sleep(2)
     #robot.go(task_model.ref_act_traj[i+1])
+    i+=1
 
 print("Traj execution stopped")
