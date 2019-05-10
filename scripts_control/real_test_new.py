@@ -32,16 +32,18 @@ while i < task_model.total_timestep-1:
     print('timestep:',i,'angle', i*30/45)
     task_model.current_timestep = i
 
-    robot_cartesian = robot.get_current_cartesian()
-    cur_wrench = task_model.wrench_compensation(robot.current_ft(), robot_cartesian[3:])
+    actual_cartesian = robot.get_current_cartesian()
+    robot_cartesian = task_model.actual2robot(actual_cartesian)
+    cur_wrench = task_model.wrench_compensation(robot.current_ft(), actual_cartesian[3:])
     print('cur wrench',cur_wrench)
 
-    task_model.state_estimation(cur_wrench, robot_cartesian)
+    task_model.state_estimation(cur_wrench, actual_cartesian)
     dut = task_model.position_optimal_control(cur_wrench, task_model.ref_obj_vel_traj[i]).reshape(-1)
-    dx_robot_body = dut[6:12]
-    dx_robot_spatial = adjointTrans(quat2rotm(robot_cartesian[3:]),robot_cartesian[0:3]).dot(dx_robot_body)
+    #dx_robot_body = dut[6:12]
+    #dx_robot_spatial = adjointTrans(quat2rotm(robot_cartesian[3:]),robot_cartesian[0:3]).dot(dx_robot_body)
+    dx_robot_spatial = dut[6:12]
     robot_ut = np.concatenate(robot_cartesian[0:3] + dx_robot_spatial[0:3], quat_mul(exp2quat(dx_robot_spatial[3:]), robot_cartesian[3:]))
-
+    print('dx_robot_spatial:',dx_robot_spatial)
     actual_ut = task_model.robot2actual(robot_ut)
 
     print('control input: ', actual_ut,'press enter to confirm, input 0 to reject')

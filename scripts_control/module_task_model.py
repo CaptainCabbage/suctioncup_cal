@@ -72,14 +72,14 @@ class taskModel2():
         ft_tool[3:] = 1000*ft_tool[3:]
         return ft_tool
 
-    def state_estimation(self, ft_force, robot_cartesian):
+    def state_estimation(self, ft_force, actual_cartesian):
         i = self.current_timestep
         print('Timestep'),
         print(i)
         print('State estimation:')
         # observation
-        self.act_traj[i] = robot_cartesian
-        self.end_traj[i] = self.actual2robot(robot_cartesian)
+        self.act_traj[i] = actual_cartesian
+        self.end_traj[i] = self.actual2robot(actual_cartesian)
         #print('current robot:',self.end_traj[i])
         #ft_force = self.wrench_compensation(robot_ft,robot_cartesian[3:]) TODO change this back!!
 
@@ -124,6 +124,8 @@ class taskModel2():
     def position_optimal_control(self, ft_force, v_obj_star):
         # return
         print('OPTIMAL CONTROL')
+        print('sensed force:', ft_force)
+        print('obj velocity goal:', v_obj_star)
 
         i = self.current_timestep
 
@@ -182,7 +184,7 @@ class taskModel2():
         adg_contact[0:3,3:] = skew_sym(self.pc)
         adg_robot2obj = adjointTrans(np.dot(R_robot_.T,R_obj_), np.dot(R_robot_.T,p_robot_ - p_obj_))
         adg_contact2robot = np.dot(adg_robot2obj,adg_contact)
-        adg_config = adjointTrans(R_config_.T, -np.dot(R_config_.T,p_config_))
+        adg_config = adjointTrans(R_config_, p_config_).T
         adg_vobj = np.linalg.multi_dot([adg_config,K_spring,adg_contact2robot])
         J3 = np.zeros([6,24])
         J3[:,0:6] = -adg_vobj
@@ -382,7 +384,7 @@ class taskModel2():
         v_robot_spatial = np.concatenate((np.linalg.multi_dot([-R_robot,R_robot_.T,x_robot_[0:3]])+x_robot_[0:3],rotm2exp(np.dot(R_robot,R_robot_.T))))
         # compute robot constraint matrix: J_robot*x = v_robot_spatial
         J_robot = np.zeros((6,12))
-        J_robot[0:6,0:6] = np.identity(6)
+        J_robot[0:6,0:6] = adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])#np.identity(6)
         J_robot[0:6,6:] = -np.dot(adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3]),adjointTrans(self.Rc, self.pc))
         # compute env constraint matrix: J_env*x = 0
         J_env = np.dot(self.J_env(x_obj_.reshape(7, 1), x_robot_.reshape(7, 1)),
@@ -418,10 +420,10 @@ class taskModel2():
 
     def robot2actual(self, p_rigid_):
         p_rigid = np.copy(p_rigid_)
-    	p_actual = np.zeros(7)
-    	p_actual[3:]=p_rigid[3:]
-    	p_actual[0:3] = p_rigid[0:3] - np.dot(quat2rotm(p_rigid[3:]),[0,0,self.gripper_length]) + self.origin.reshape(-1)
-    	return p_actual
+        p_actual = np.zeros(7)
+        p_actual[3:]=p_rigid[3:]
+        p_actual[0:3] = p_rigid[0:3] - np.dot(quat2rotm(p_rigid[3:]),[0,0,self.gripper_length]) + self.origin.reshape(-1)
+        return p_actual
 
 class gripperMapping():
 
@@ -505,7 +507,8 @@ class gripperMapping():
 
     def Mapping(self, x, X_name, Y_name):
         K, x0, y0,r_max = self.local_lr_possemidef(x, X_name, Y_name)
-        r = np.linalg.norm(x[:,:-1]-x0[:-1])
+        x = x.reshape(-1)
+        r = np.linalg.norm(x[:-1]-x0[:-1])
         if r > 1.2*r_max:
             x = x*1.2*r_max/r
         y_predict = np.dot(K, (x - x0).T).reshape(-1) + y0
