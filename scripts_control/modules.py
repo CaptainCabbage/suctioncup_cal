@@ -76,9 +76,10 @@ class compliantMapping():
     # TODO: verify the accuracy of mapping
     def __init__(self, mapping_file):
 
-        K_neighbor = 19
-        self.alpha_wrench =[1,1,1,100,100,100]
-        self.alpha_pos = [1,1,1,1,1,1] # todo figure this out
+        K_neighbor_wrench = 15
+        K_neighbor_pos = 60
+        self.alpha_wrench =[1,1,1,0.1,0.1,0.1]
+        self.alpha_pos = [1,1,1,50,50,50]
 
         with open(mapping_file) as f:
             json_data = json.load(f)
@@ -88,14 +89,16 @@ class compliantMapping():
         #print(self.ref_cartesians)
         self.ref_poses = toExpmap(self.ref_cartesians)
 
-        self.contact_wrench_nbrs = NearestNeighbors(n_neighbors=K_neighbor, algorithm='ball_tree').fit(\
+        self.contact_wrench_nbrs = NearestNeighbors(n_neighbors=K_neighbor_wrench, algorithm='ball_tree').fit(\
         self.ref_contact_wrenches*self.alpha_wrench)
 
-        self.wrench_nbrs = NearestNeighbors(n_neighbors=K_neighbor, algorithm='ball_tree').fit(\
+        self.wrench_nbrs = NearestNeighbors(n_neighbors=K_neighbor_wrench, algorithm='ball_tree').fit(\
         self.ref_wrenches*self.alpha_wrench)
 
-        self.pos_nbrs = NearestNeighbors(n_neighbors=K_neighbor, algorithm='ball_tree').fit(\
+        self.pos_nbrs = NearestNeighbors(n_neighbors=K_neighbor_pos, algorithm='ball_tree').fit(\
         self.ref_poses*self.alpha_pos)
+
+        self.N_sample = self.ref_cartesians.shape[0]
 
     def __KNNmapping_sum(self, X, Xref_nbrs, X_ref, Y_ref, alpha):
         # use weighted sum to calculate query point
@@ -172,22 +175,26 @@ class compliantMapping():
         return reg
 
     def local_lr_possemidef(self, X, X_name, Y_name):
-
+        # return: Y.T = K*(X-x0).T + y0.T
         Xref, Xref_nbrs, Yref, alpha = self.__get_param(X_name,Y_name)
         X_ = X*alpha
-        Yref = -Yref #TODO
         distances, indices = Xref_nbrs.kneighbors(X_)
+        itself = np.argwhere(distances==0)
+        if len(itself)!=0:
+            indices = np.delete(indices,np.argwhere(distances==0)[0])
         X_ind = np.squeeze(Xref[indices])
         Y_ind = np.squeeze(Yref[indices])
-        reg = LinearRegression().fit(X_ind, Y_ind)
-        b = np.dot(np.linalg.pinv(reg.coef_),reg.intercept_)
-        K_T = posdef_estimation(X_ind[:,:-1]+b[:-1],Y_ind[:,:-1])
+
+        x0 = np.mean(X_ind, axis=0)
+        y0 = np.mean(Y_ind, axis=0)
+        K_T = posdef_estimation(X_ind[:, :-1] - x0[:-1],Y_ind[:,:-1]- y0[:-1])
         K = np.zeros([6,6])
         K[0:5,0:5] = K_T.T
-        return K
+        return K,x0,y0
 
     def Kfx(self,x_pos):
-        return self.local_lr_possemidef(x_pos, 'config', 'wrench')
+        K, x0,y0 = self.local_lr_possemidef(x_pos, 'config', 'wrench')
+        return K
         #return self.local_lr(x_pos,'config','wrench').coef_
 
     def Mapping(self, X, X_name, Y_name):
@@ -215,7 +222,7 @@ class compliantMapping():
         else:
             raise NameError('the 2nd param should only be wrench, contact_wrench or config')
 
-        return self.__KNNmapping_lr(X, _Xref_nbrs,_Xref, _Y_ref, _alpha)
+        return self.__KNNmapping_sum(X, _Xref_nbrs,_Xref, _Y_ref, _alpha)
 
 class abbRobot():
     def __init__(self):

@@ -31,9 +31,9 @@ def J_general_vel(x_o, x_r):
     J[0:3,0:3] = quat2rotm(x_o[3:])
     J[3:7,3:6] = J_w2quat(x_o[3:])
     J[7:10,6:9] = quat2rotm(x_r[3:])
-    J[11:14,9:12] = J_w2quat(x_r[3:])
+    J[10:14,9:12] = J_w2quat(x_r[3:])
     return J
 
 def J_w2quat(q):
-    J = 0.5*np.array([[-q[1],-q[2],-q[3]],[q[0],-q[3],q[2]],[q[3],q[0],-q[1]],[-q[2],q[1],q[0]]]
+    J = 0.5*np.array([[-q[1],-q[2],-q[3]],[q[0],-q[3],q[2]],[q[3],q[0],-q[1]],[-q[2],q[1],q[0]]])
     return J
