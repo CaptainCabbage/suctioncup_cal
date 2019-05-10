@@ -146,8 +146,8 @@ class taskModel2():
         x_config_ = np.append(p_config_,rotm2exp(R_config_))
         K_config = self.vc_mapping.Kfx(x_config_.reshape(1, -1)) #force exert on the rigid end relative to rigid end pos change
         #K_config = -np.diag([10,10,10,200,200,200])
-        K_spring = 2*K_config
-        f_spring_ = -f_config_
+        K_spring = K_config
+        f_spring_ = f_config_
 
         # constraints matrix
         #1 env_constraints
@@ -189,7 +189,7 @@ class taskModel2():
         J3 = np.zeros([6,24])
         J3[:,0:6] = -adg_vobj
         J3[:,6:12] = np.linalg.multi_dot([adg_config,K_spring,np.identity(6)])
-        J3[:,18:24] = np.identity(6)
+        J3[:-1,18:23] = np.identity(5) # f_contact[6] doesnt matter
         constraints3 = LinearConstraint(J3,np.dot(adg_config,f_spring_),np.dot(adg_config,f_spring_))
 
         # constraint 4: in the friction cone: only consider about the env force for now
@@ -221,13 +221,18 @@ class taskModel2():
         A = matrix(np.concatenate((J1[6:],J2,J3)))
         b = matrix(np.concatenate((-G_o,v_obj_star,
                            np.dot(adg_config,f_spring_))))
-        G = matrix(-J4)
-        h = matrix(np.zeros(16))
-        sol = solvers.qp(Q, p, G, h, A, b,options={'show_progress':False})
+        #G_bound = np.concatenate((np.identity(24),-np.identity(24)))
+        #h_bound = np.array([5,5,5,5*np.pi/180,5*np.pi/180,5*np.pi/180,30,30,30,10*np.pi/180,10*np.pi/180,10*np.pi/180,10,10,10,10,10,10,10,10,20,500,500,500])
+        #G = np.concatenate((-J4,G_bound))
+        #h = np.concatenate((np.zeros(16),h_bound,h_bound))
+        G = -J4
+        h = np.zeros(16)
+        solvers.options['show_progress'] = False
+        sol = solvers.qp(Q, p, matrix(G), matrix(h), A, b)
         print(sol['status']),
         print('solution after total iterations of'),
         print(sol['iterations'])
-        return sol['x']
+        return np.array(sol['x']).reshape(-1)
 
     def state_model(self,ut, x_robot_, x_config_, f_config_,x_obj_):
         # p_robot : the position of the rigid end

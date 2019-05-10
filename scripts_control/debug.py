@@ -17,7 +17,6 @@ task_model.state_estimation(f_config_2, task_model.actual_start)
 dut=np.array(task_model.position_optimal_control(-f_config_, v_obj_star)).reshape(-1)
 print(dut)
 
-dx_robot_body = dut[6:12]
 robot_cartesian= task_model.actual_start
 dx_robot_spatial = dut[6:12]#adjointTrans(quat2rotm(robot_cartesian[3:]), robot_cartesian[0:3]).dot(dx_robot_body)
 print(dx_robot_spatial)
