@@ -6,11 +6,12 @@ from module_task_model import *
 np.set_printoptions(precision=4, suppress=True)
 np.random.seed(100)
 
-task_model = taskModel2('vc_calibration.json','task_model_new.json')
+task_model = taskModel2('vc_calibration_Nmm.json','task_model_new.json')
 
 robot = abbRobot()
 robot.initialize()
 robot.SetSpeed(5,3)
+'''
 p0 = np.zeros(7)
 p0[0:3] = task_model.actual_start[0:3]
 p0[2] = 520
@@ -27,6 +28,7 @@ print(task_model.actual_start)
 raw_input()
 robot.go(task_model.actual_start)
 #rospy.sleep(5)
+'''
 i=0
 while i < task_model.total_timestep-1:
     print('timestep:',i,'angle', i*30/45)
@@ -35,6 +37,7 @@ while i < task_model.total_timestep-1:
     actual_cartesian = np.array(robot.get_current_cartesian())
     robot_cartesian = task_model.actual2robot(actual_cartesian)
     cur_wrench = task_model.wrench_compensation(robot.current_ft(), actual_cartesian[3:])
+    #cur_wrench = np.array([0.402,0.0861,0.4615,4.4951,-31.201,-6.8644])
     print('cur wrench',cur_wrench)
 
     task_model.state_estimation(cur_wrench, actual_cartesian)
@@ -42,7 +45,10 @@ while i < task_model.total_timestep-1:
     #dx_robot_body = dut[6:12]
     #dx_robot_spatial = adjointTrans(quat2rotm(robot_cartesian[3:]),robot_cartesian[0:3]).dot(dx_robot_body)
     dx_robot_spatial = dut[6:12]
-    robot_ut = np.concatenate(robot_cartesian[0:3] + dx_robot_spatial[0:3], quat_mul(exp2quat(dx_robot_spatial[3:]), robot_cartesian[3:]))
+    robot_ut = np.zeros(7)
+    robot_ut[0:3] = robot_cartesian[0:3] + dx_robot_spatial[0:3]
+    robot_ut[3:]=quat_mul(exp2quat(dx_robot_spatial[3:]), robot_cartesian[3:])
+    print(robot_cartesian)
     print('dx_robot_spatial:',dx_robot_spatial)
 
     actual_ut = task_model.robot2actual(robot_ut)

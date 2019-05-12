@@ -133,6 +133,8 @@ class taskModel2():
         p_config_ = self.config_traj[i,0:3]
         R_config_ = quat2rotm(self.config_traj[i,3:])
         f_config_ = -ft_force
+        adg_config_T = adjointTrans(R_config_.T, -np.dot(R_config_.T,p_config_).T).T
+        f_contact =  np.dot(adg_config_T,-ft_force)
 
         x_obj_ = self.obj_traj[i]
 
@@ -167,14 +169,14 @@ class taskModel2():
         J1[0:6,0:12] = J_env
         J1[6:,12:] = J_force
         #constraints1 = LinearConstraint(J1, np.concatenate((np.zeros(6),-G_o)), np.concatenate((np.zeros(6),-G_o)))
-        constraints1 = LinearConstraint(J1[6:],  -G_o,  -G_o)
+        #constraints1 = LinearConstraint(J1[6:],  -G_o,  -G_o)
 
         #2 goal satisfy
         # vel goal
         # Gv*v = v_goal
         Sv = np.identity(6)
         J2 = np.concatenate((Sv,np.zeros([6,18])),axis=1)
-        constraints2 = LinearConstraint(J2, v_obj_star, v_obj_star)
+        #constraints2 = LinearConstraint(J2, v_obj_star, v_obj_star)
         # force goal
         # Gf*fcontact = fcontact_goal
 
@@ -184,13 +186,13 @@ class taskModel2():
         adg_contact[0:3,3:] = skew_sym(self.pc)
         adg_robot2obj = adjointTrans(np.dot(R_robot_.T,R_obj_), np.dot(R_robot_.T,p_robot_ - p_obj_))
         adg_contact2robot = np.dot(adg_robot2obj,adg_contact)
-        adg_config = adjointTrans(R_config_, p_config_).T
-        adg_vobj = np.linalg.multi_dot([adg_config,K_spring,adg_contact2robot])
+
+        adg_vobj = np.linalg.multi_dot([adg_config_T,K_spring,adg_contact2robot])
         J3 = np.zeros([6,24])
         J3[:,0:6] = -adg_vobj
-        J3[:,6:12] = np.linalg.multi_dot([adg_config,K_spring,np.identity(6)])
+        J3[:,6:12] = np.linalg.multi_dot([adg_config_T,K_spring,np.identity(6)])
         J3[:-1,18:23] = np.identity(5) # f_contact[6] doesnt matter
-        constraints3 = LinearConstraint(J3,np.dot(adg_config,f_spring_),np.dot(adg_config,f_spring_))
+        #constraints3 = LinearConstraint(J3,np.dot(adg_config_T,f_spring_),np.dot(adg_config_T,f_spring_))
 
         # constraint 4: in the friction cone: only consider about the env force for now
         J4 = np.zeros([16,24])
@@ -199,39 +201,35 @@ class taskModel2():
             J4[k,12:15] = d_k
             J4[k+8,15:18] = d_k
 
-        constraints4 = LinearConstraint(J4,np.full(16, 1), np.full(16, 1))#, keep_feasible=True)
+        #constraints4 = LinearConstraint(J4,np.full(16, 1), np.full(16, 1))#, keep_feasible=True)
 
-        J_all = np.concatenate((J1,J2,J3,J4))
-        cons_lb = np.concatenate((np.concatenate((np.zeros(6),-G_o)),v_obj_star,np.dot(adg_config,f_spring_),
-                                 np.full(16, 0)))
-        cons_ub = np.concatenate((np.concatenate((np.zeros(6), -G_o)), v_obj_star, np.dot(adg_config, f_spring_),
-                                 np.full(16, np.inf)))
-        constraints_all = LinearConstraint(J_all, cons_lb, cons_ub)
-
-        Q = np.identity(24)
-        Q[0:12,0:12] = np.identity(12)
-        def cost(x):
-            return np.dot(x.T,Q.dot(x))
-        def jac_cost(x):
-            return 2*Q.dot(x)
+        #J_all = np.concatenate((J1,J2,J3,J4))
+        #cons_lb = np.concatenate((np.concatenate((np.zeros(6),-G_o)),v_obj_star,np.dot(adg_config_T,f_spring_),
+        #                         np.full(16, 0)))
+        #cons_ub = np.concatenate((np.concatenate((np.zeros(6), -G_o)), v_obj_star, np.dot(adg_config_T, f_spring_),
+        #                         np.full(16, np.inf)))
+        #constraints_all = LinearConstraint(J_all, cons_lb, cons_ub)
 
         # use quadprog
-        Q = matrix(np.identity(24))
-        p = matrix(np.zeros(24))
-        A = matrix(np.concatenate((J1[6:],J2,J3)))
-        b = matrix(np.concatenate((-G_o,v_obj_star,
-                           np.dot(adg_config,f_spring_))))
-        #G_bound = np.concatenate((np.identity(24),-np.identity(24)))
-        #h_bound = np.array([5,5,5,5*np.pi/180,5*np.pi/180,5*np.pi/180,30,30,30,10*np.pi/180,10*np.pi/180,10*np.pi/180,10,10,10,10,10,10,10,10,20,500,500,500])
-        #G = np.concatenate((-J4,G_bound))
-        #h = np.concatenate((np.zeros(16),h_bound,h_bound))
-        G = -J4
-        h = np.zeros(16)
+        Q = np.identity(24)*10
+        Q[0:12,0:12] = np.identity(12)
+        p = np.zeros(24)
+        A = np.concatenate((J1[6:],J2,J3))
+        b = np.concatenate((-G_o,v_obj_star,
+                           np.dot(adg_config_T,f_spring_)))
+
+        G_bound = np.concatenate((np.identity(24),-np.identity(24)))
+        h_bound = np.array([5,5,5,5*np.pi/180,5*np.pi/180,5*np.pi/180,30,30,30,20*np.pi/180,20*np.pi/180,20*np.pi/180,20,20,20,20,20,20,20,20,20,500,500,500])
+        G = np.concatenate((-J4,np.identity(24)))
+        h = np.concatenate((np.zeros(16),h_bound))
+        #G = -J4
+        #h = np.zeros(16)
         solvers.options['show_progress'] = False
-        sol = solvers.qp(Q, p, matrix(G), matrix(h), A, b)
+        sol = solvers.qp(matrix(Q), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
         print('solution after total iterations of'),
         print(sol['iterations'])
+        print(np.array(sol['x']).reshape(-1))
         return np.array(sol['x']).reshape(-1)
 
     def state_model(self,ut, x_robot_, x_config_, f_config_,x_obj_):
@@ -409,7 +407,7 @@ class taskModel2():
         #bound = np.array([10,10,10,np.pi/2,np.pi/2,np.pi/2,10,10,10,np.pi/2,np.pi/2,np.pi/2])
         #h = np.concatenate((bound,bound))
         h = x_obj_[2] - self.obj_lz
-        sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b),options={'show_progress':False})
+        sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
         print('solution after total iterations of'),
         print(sol['iterations'])
@@ -488,6 +486,7 @@ class gripperMapping():
 
     def local_lr_possemidef(self, X, X_name, Y_name):
         # return: Y.T = K*(X-x0).T + y0.T
+        #print(X)
         Xref, Xref_nbrs, Yref, alpha = self.__get_param(X_name,Y_name)
         X_ = X*alpha
         distances, indices = Xref_nbrs.kneighbors(X_)
@@ -496,6 +495,8 @@ class gripperMapping():
         #    indices = np.delete(indices,np.argwhere(distances==0)[0])
         X_ind = np.squeeze(Xref[indices])
         Y_ind = np.squeeze(Yref[indices])
+        #print(X_ind)
+        #print(Y_ind)
 
         x0 = np.mean(X_ind, axis=0)
         y0 = np.mean(Y_ind, axis=0)
@@ -511,11 +512,14 @@ class gripperMapping():
         #return self.local_lr(x_pos,'config','wrench').coef_
 
     def Mapping(self, x, X_name, Y_name):
+        print(x)
         K, x0, y0,r_max = self.local_lr_possemidef(x, X_name, Y_name)
         x = x.reshape(-1)
         r = np.linalg.norm(x[:-1]-x0[:-1])
         if r > 1.2*r_max:
             x = x*1.2*r_max/r
+        print('Kx:',np.dot(K, (x - x0).T).reshape(-1))
+        print('y0:',y0)
         y_predict = np.dot(K, (x - x0).T).reshape(-1) + y0
 
         return y_predict
