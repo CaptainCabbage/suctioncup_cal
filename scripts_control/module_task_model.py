@@ -213,10 +213,11 @@ class taskModel2():
         #constraints_all = LinearConstraint(J_all, cons_lb, cons_ub)
 
         # use quadprog
-        P = 100*np.identity(24)
+        P = np.identity(24)#np.zeros([24,24])
+        #P[0:12,0:12] = np.identity(12)
         #Q[12:,12:] = 10*Q[12:,12:]
         p = np.zeros(24)
-        p[18:] = -100*f_contact
+        #p[18:] = -100*f_contact
         A_ = np.concatenate((J1,J2,J3))
         b_ = np.concatenate((np.zeros(6),-G_o,v_obj_star,
                            np.dot(adg_config_T,f_spring_)))

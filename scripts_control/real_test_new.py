@@ -45,6 +45,10 @@ while i < task_model.total_timestep-1:
     #dx_robot_body = dut[6:12]
     #dx_robot_spatial = adjointTrans(quat2rotm(robot_cartesian[3:]),robot_cartesian[0:3]).dot(dx_robot_body)
     dx_robot_spatial = dut[6:12]
+    ub_x = np.array([5, 5, 5, 5 * np.pi / 180, 5 * np.pi / 180, 5 * np.pi / 180])
+    lb_x = -ub_x
+    dx_robot_spatial = np.minimum(dx_robot_spatial, ub_x)
+    dx_robot_spatial = np.maximum(dx_robot_spatial, lb_x)
     robot_ut = np.zeros(7)
     robot_ut[0:3] = robot_cartesian[0:3] + dx_robot_spatial[0:3]
     robot_ut[3:]=quat_mul(exp2quat(dx_robot_spatial[3:]), robot_cartesian[3:])

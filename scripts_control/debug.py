@@ -11,9 +11,9 @@ f_config_ = np.array([0.402,0.0861,0.4615,4.4951,-31.201,-6.8644])
 f_config_2 = np.array([-1,0,5,50,-500,0])
 v_obj_star = np.array([1.3404, 0, 0.6702, 0, 0.0175, 0])
 
-task_model.state_estimation(f_config_, task_model.actual_start)
+task_model.state_estimation(-f_config_, task_model.actual_start)
 task_model.current_timestep += 1
-task_model.state_estimation(f_config_2, task_model.actual_start)
+task_model.state_estimation(-f_config_, task_model.actual_start)
 dut=np.array(task_model.position_optimal_control(-f_config_, v_obj_star)).reshape(-1)
 #print(dut)
 
