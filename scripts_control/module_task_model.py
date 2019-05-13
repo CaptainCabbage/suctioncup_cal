@@ -212,20 +212,26 @@ class taskModel2():
         #constraints_all = LinearConstraint(J_all, cons_lb, cons_ub)
 
         # use quadprog
-        Q = np.identity(24)*10
-        Q[0:12,0:12] = np.identity(12)
+        Q = np.identity(24)
         p = np.zeros(24)
         A = np.concatenate((J1[6:],J2,J3))
         b = np.concatenate((-G_o,v_obj_star,
                            np.dot(adg_config_T,f_spring_)))
 
-        G_bound = np.concatenate((np.identity(24),-np.identity(24)))
-        h_bound = np.array([5,5,5,5*np.pi/180,5*np.pi/180,5*np.pi/180,30,30,30,20*np.pi/180,20*np.pi/180,20*np.pi/180,20,20,20,20,20,20,20,20,20,500,500,500])
-        G = np.concatenate((-J4,np.identity(24)))
-        h = np.concatenate((np.zeros(16),h_bound))
+        #G_bound = np.concatenate((np.identity(24),-np.identity(24)))
+        #h_ub = np.array([5,5,5,5*np.pi/180,5*np.pi/180,5*np.pi/180,10,10,10,10*np.pi/180,10*np.pi/180,10*np.pi/180,20,20,20,20,20,20,20,20,20,500,500,500])
+        #h_lb = np.array(
+        #    [-5, -5, -5, -5 * np.pi / 180, -5 * np.pi / 180, -5 * np.pi / 180, -10, -10, -10, -10 * np.pi / 180, -10 * np.pi / 180,
+        #     -10 * np.pi / 180, -20, -20, 3, -20, -20, 3, -20, -20, -20, -500, -500, -500])
+        G_bound = np.zeros([2,24])
+        G_bound[0,14] = -1
+        G_bound[1,17] = -1
+        h_lb = np.ones(2)*3
+        G = np.concatenate((-J4, G_bound))
+        h = np.concatenate((np.zeros(16),-h_lb))
         #G = -J4
         #h = np.zeros(16)
-        solvers.options['show_progress'] = False
+        solvers.options['show_progress'] = True
         sol = solvers.qp(matrix(Q), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
         print('solution after total iterations of'),
@@ -389,7 +395,8 @@ class taskModel2():
         # compute robot constraint matrix: J_robot*x = v_robot_spatial
         J_robot = np.zeros((6,12))
         J_robot[0:6,0:6] = adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])#np.identity(6)
-        J_robot[0:6,6:] = -np.dot(adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3]),adjointTrans(self.Rc, self.pc))
+        #J_robot[0:6,6:] = -np.dot(adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3]),adjointTrans(self.Rc, self.pc))
+        J_robot[0:6, 6:] = adjointTrans(self.Rc, self.pc)
         # compute env constraint matrix: J_env*x = 0
         J_env = np.dot(self.J_env(x_obj_.reshape(7, 1), x_robot_.reshape(7, 1)),
                        J_general_vel(x_obj_, x_robot_))  # J_env*x = 0
@@ -408,6 +415,7 @@ class taskModel2():
         #bound = np.array([10,10,10,np.pi/2,np.pi/2,np.pi/2,10,10,10,np.pi/2,np.pi/2,np.pi/2])
         #h = np.concatenate((bound,bound))
         h = x_obj_[2] - self.obj_lz
+        solvers.options['show_progress'] = False
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
         print('solution after total iterations of'),

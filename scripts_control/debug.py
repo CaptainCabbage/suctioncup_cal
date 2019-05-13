@@ -15,7 +15,7 @@ task_model.state_estimation(f_config_, task_model.actual_start)
 task_model.current_timestep += 1
 task_model.state_estimation(f_config_2, task_model.actual_start)
 dut=np.array(task_model.position_optimal_control(-f_config_, v_obj_star)).reshape(-1)
-print(dut)
+#print(dut)
 
 robot_cartesian= task_model.actual_start
 dx_robot_spatial = dut[6:12]#adjointTrans(quat2rotm(robot_cartesian[3:]), robot_cartesian[0:3]).dot(dx_robot_body)
@@ -24,6 +24,7 @@ robot_ut=np.zeros(7)
 robot_ut[0:3]=robot_cartesian[0:3] + dx_robot_spatial[0:3]
 robot_ut[3:]= quat_mul(exp2quat(dx_robot_spatial[3:]), robot_cartesian[3:])
 
+print('current position:',task_model.actual_start)
 actual_ut = task_model.robot2actual(robot_ut)
 
 print('control input: ', robot_ut)
