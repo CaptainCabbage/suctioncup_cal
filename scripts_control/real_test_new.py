@@ -11,7 +11,7 @@ task_model = taskModel2('vc_calibration_Nmm.json','task_model_new.json')
 robot = abbRobot()
 robot.initialize()
 robot.SetSpeed(5,3)
-'''
+
 p0 = np.zeros(7)
 p0[0:3] = task_model.actual_start[0:3]
 p0[2] = 520
@@ -28,7 +28,7 @@ print(task_model.actual_start)
 raw_input()
 robot.go(task_model.actual_start)
 #rospy.sleep(5)
-'''
+
 i=0
 while i < task_model.total_timestep-1:
     print('timestep:',i,'angle', i*30/45)

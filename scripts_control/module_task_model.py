@@ -151,7 +151,8 @@ class taskModel2():
         #K_config = -np.diag([10,10,10,200,200,200])
         K_spring = K_config
         f_spring_ = f_config_
-        print(K_spring)
+        print('K_spring',K_spring)
+
 
         # constraints matrix
         #1 env_constraints
@@ -218,7 +219,7 @@ class taskModel2():
         #P[0:12,0:12] = np.identity(12)
         #Q[12:,12:] = 10*Q[12:,12:]
         p = np.zeros(24)
-        #p[18:] = -100*f_contact
+        p[18:] = -f_contact
         A_ = np.concatenate((J1,J2,J3))
         b_ = np.concatenate((np.zeros(6),-G_o,v_obj_star,
                            np.dot(adg_config_T,f_spring_)))
@@ -241,9 +242,11 @@ class taskModel2():
         h_ub2 = np.array([5, 5, 5, 5 * np.pi / 180, 5 * np.pi / 180, 5 * np.pi / 180])
         G_bound2 = np.zeros([6,24])
         G_bound2[:,6:12] = np.diag(1/h_ub2)
+        G_bound3 = np.zeros([1,24])
+        G_bound3[0,8] = 1
 
-        G = np.concatenate((-J4, G_bound1, -G_bound1))#,G_bound2,-G_bound2))
-        h = np.concatenate((np.zeros(16),-h_lb1,3*h_lb1))#,np.ones(6),np.ones(6)))
+        G = np.concatenate((-J4, G_bound1, -G_bound1,-G_bound3))#,G_bound2,-G_bound2))
+        h = np.concatenate((np.zeros(16),-h_lb1,3*h_lb1,np.ones(1)*5))#,np.ones(6),np.ones(6)))
         '''
         M = np.concatenate((G_,h_.reshape(-1,1)),axis=1)
         Q,R = np.linalg.qr(M)
@@ -253,7 +256,7 @@ class taskModel2():
         '''
         #G = -J4
         #h = np.zeros(16)
-        solvers.options['show_progress'] = True
+        solvers.options['show_progress'] = False
 
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
@@ -434,10 +437,10 @@ class taskModel2():
         p = np.concatenate((np.zeros(6),-dx_config_guess))
         #G = np.concatenate((np.identity(12),-np.identity(12)))
         adg_obj =adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])
-        G= np.concatenate((np.zeros(6),adg_obj[2])).reshape(1,-1)
+        G= -np.concatenate((np.zeros(6),adg_obj[2])).reshape(1,-1)
         #bound = np.array([10,10,10,np.pi/2,np.pi/2,np.pi/2,10,10,10,np.pi/2,np.pi/2,np.pi/2])
         #h = np.concatenate((bound,bound))
-        h = x_obj_[2] - self.obj_lz
+        h = -(x_obj_[2] - self.obj_lz)
         solvers.options['show_progress'] = False
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
