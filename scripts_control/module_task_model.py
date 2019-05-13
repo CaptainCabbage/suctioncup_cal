@@ -252,7 +252,7 @@ class taskModel2():
         #G = -J4
         #h = np.zeros(16)
         solvers.options['show_progress'] = True
-        solvers.primalstart['x'] = np.zeros(24)
+
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
         print('solution after total iterations of'),
