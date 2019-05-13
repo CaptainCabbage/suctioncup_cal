@@ -165,6 +165,7 @@ class taskModel2():
         ADG_env[3:,0:3] = np.dot(skew_sym(self.envc1),R_obj_.T)
         ADG_env[3:,3:] = np.dot(skew_sym(self.envc2), R_obj_.T)
         J_force = np.concatenate((ADG_env,J_co),axis=1)
+        print(ADG_env)
 
         J1 = np.zeros([12,24])
         J1[0:6,0:12] = J_env
@@ -212,27 +213,47 @@ class taskModel2():
         #constraints_all = LinearConstraint(J_all, cons_lb, cons_ub)
 
         # use quadprog
-        Q = np.identity(24)
+        P = 100*np.identity(24)
+        #Q[12:,12:] = 10*Q[12:,12:]
         p = np.zeros(24)
-        A = np.concatenate((J1[6:],J2,J3))
-        b = np.concatenate((-G_o,v_obj_star,
+        p[18:] = -100*f_contact
+        A_ = np.concatenate((J1,J2,J3))
+        b_ = np.concatenate((np.zeros(6),-G_o,v_obj_star,
                            np.dot(adg_config_T,f_spring_)))
+
+        M = np.concatenate((A_,b_.reshape(-1,1)),axis=1)
+        Q,R = np.linalg.qr(M)
+        r_M = np.linalg.matrix_rank(M[:,:-1])
+        A = R[0:r_M,0:-1]
+        b = R[0:r_M,-1]
 
         #G_bound = np.concatenate((np.identity(24),-np.identity(24)))
         #h_ub = np.array([5,5,5,5*np.pi/180,5*np.pi/180,5*np.pi/180,10,10,10,10*np.pi/180,10*np.pi/180,10*np.pi/180,20,20,20,20,20,20,20,20,20,500,500,500])
         #h_lb = np.array(
         #    [-5, -5, -5, -5 * np.pi / 180, -5 * np.pi / 180, -5 * np.pi / 180, -10, -10, -10, -10 * np.pi / 180, -10 * np.pi / 180,
         #     -10 * np.pi / 180, -20, -20, 3, -20, -20, 3, -20, -20, -20, -500, -500, -500])
-        G_bound = np.zeros([2,24])
-        G_bound[0,14] = -1
-        G_bound[1,17] = -1
-        h_lb = np.ones(2)*3
-        G = np.concatenate((-J4, G_bound))
-        h = np.concatenate((np.zeros(16),-h_lb))
+        G_bound1 = np.zeros([2,24])
+        G_bound1[0,14] = -1
+        G_bound1[1,17] = -1
+        h_lb1 = np.ones(2)*3
+        h_ub2 = np.array([5, 5, 5, 5 * np.pi / 180, 5 * np.pi / 180, 5 * np.pi / 180])
+        G_bound2 = np.zeros([6,24])
+        G_bound2[:,6:12] = np.diag(1/h_ub2)
+
+        G = np.concatenate((-J4, G_bound1, -G_bound1))#,G_bound2,-G_bound2))
+        h = np.concatenate((np.zeros(16),-h_lb1,3*h_lb1))#,np.ones(6),np.ones(6)))
+        '''
+        M = np.concatenate((G_,h_.reshape(-1,1)),axis=1)
+        Q,R = np.linalg.qr(M)
+        r_M = np.linalg.matrix_rank(M[:,:-1])
+        G = R[0:r_M,0:-1]
+        h = R[0:r_M,-1]
+        '''
         #G = -J4
         #h = np.zeros(16)
         solvers.options['show_progress'] = True
-        sol = solvers.qp(matrix(Q), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
+        solvers.primalstart['x'] = np.zeros(24)
+        sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
         print('solution after total iterations of'),
         print(sol['iterations'])
