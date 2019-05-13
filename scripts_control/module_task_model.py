@@ -151,6 +151,7 @@ class taskModel2():
         #K_config = -np.diag([10,10,10,200,200,200])
         K_spring = K_config
         f_spring_ = f_config_
+        print(K_spring)
 
         # constraints matrix
         #1 env_constraints

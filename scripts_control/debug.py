@@ -8,6 +8,7 @@ np.set_printoptions(precision=4, suppress=True)
 task_model = taskModel2('vc_calibration_Nmm.json','task_model_new.json')
 
 f_config_ = np.array([0.402,0.0861,0.4615,4.4951,-31.201,-6.8644])
+f_config_ = np.array([-0.028,-0.2789,1.0624,-46.8237,-14.2027,-14.2948])
 f_config_2 = np.array([-1,0,5,50,-500,0])
 v_obj_star = np.array([1.3404, 0, 0.6702, 0, 0.0175, 0])
 
