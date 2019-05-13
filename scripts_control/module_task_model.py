@@ -61,7 +61,8 @@ class taskModel2():
         ft_offset = [ 1.03, 2.19, -2.28, 0.215, -0.0865, -0.0101]
         p_st =np.array([0, 0, 0.0962])
         #q_st =  [0.5556, 0, 0, 0.8315]; #qw: 0.5556 qx: 0 qy: 0 qz: 0.8315
-        R_st = np.array([[-0.3827,-0.9239,0],[0.9239,-0.3827,0],[0,0,1.0000]])
+        #R_st = np.array([[-0.3827,-0.9239,0],[0.9239,-0.3827,0],[0,0,1.0000]]) #112.5 degree
+        R_st = np.array([[0.9239,-0.3827,0],[0.3827,0.9239,0],[0,0,1]]) #22.5 degree sensor to tool frame
         # sensor frame to tool frame
         Adg = adjointTrans(R_st,p_st)
         ft_t = np.dot(Adg.T,raw_wrench)
