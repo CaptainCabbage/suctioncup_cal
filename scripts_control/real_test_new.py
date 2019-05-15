@@ -37,23 +37,14 @@ while i < task_model.total_timestep-1:
     actual_cartesian = np.array(robot.get_current_cartesian())
     robot_cartesian = task_model.actual2robot(actual_cartesian)
     cur_wrench = task_model.wrench_compensation(robot.current_ft(), actual_cartesian[3:])
-    #cur_wrench = np.array([0.402,0.0861,0.4615,4.4951,-31.201,-6.8644])
+
     print('cur wrench',cur_wrench)
 
     task_model.state_estimation(cur_wrench, actual_cartesian)
-    dut = task_model.position_optimal_control(cur_wrench, task_model.ref_obj_vel_traj[i]).reshape(-1)
-    #dx_robot_body = dut[6:12]
-    #dx_robot_spatial = adjointTrans(quat2rotm(robot_cartesian[3:]),robot_cartesian[0:3]).dot(dx_robot_body)
-    dx_robot_spatial = dut[6:12]
-    ub_x = np.array([5, 5, 5, 5 * np.pi / 180, 5 * np.pi / 180, 5 * np.pi / 180])
-    lb_x = -ub_x
-    dx_robot_spatial = np.minimum(dx_robot_spatial, ub_x)
-    dx_robot_spatial = np.maximum(dx_robot_spatial, lb_x)
-    robot_ut = np.zeros(7)
-    robot_ut[0:3] = robot_cartesian[0:3] + dx_robot_spatial[0:3]
-    robot_ut[3:]=quat_mul(exp2quat(dx_robot_spatial[3:]), robot_cartesian[3:])
-    print(robot_cartesian)
-    print('dx_robot_spatial:',dx_robot_spatial)
+    q_obj_w = quat_mul(task_model.ref_obj_traj[i+1,3:],quat_conj(task_model.obj_traj[i,3:]))
+    v_obj_w = np.concatenate((task_model.ref_obj_traj[i+1,0:3]-task_model.obj_traj[i,0:3],quat2exp(q_obj_w)))
+    v_obj_b = adjointTrans(quat2rotm(task_model.obj_traj[i,3:]).T, -np.dot(quat2rotm(task_model.obj_traj[i,3:]).T,task_model.obj_traj[i,0:3])).dot(v_obj_w)
+    robot_ut = task_model.position_optimal_control(cur_wrench, task_model.ref_obj_vel_traj[i])
 
     actual_ut = task_model.robot2actual(robot_ut)
 

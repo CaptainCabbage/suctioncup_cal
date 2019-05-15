@@ -2,11 +2,6 @@ import numpy as np
 import tf.transformations as tr
 import scipy
 
-def TransformWrench():
-    transformed_wrench = []
-    return transformed_wrench
-
-
 def addup_fixframe(p1,p2):
     # first p2, then p1
     quat = quat_tr2ros(tr.quaternion_multiply(\
@@ -23,6 +18,12 @@ def compute_increment(p1,p0):
     p[3:7] = quat_tr2ros(tr.quaternion_multiply(\
     quat_ros2tr(p1[3:7]),tr.quaternion_inverse(quat_ros2tr(p0[3:7]))))
     return p
+
+def homo_g(R,p):
+    g= np.identity(4)
+    g[0:3,0:3] = R
+    g[0:3,-1] = p
+    return g
 
 def quat_tr2ros(q_tr):
     # q_tr: x y z w

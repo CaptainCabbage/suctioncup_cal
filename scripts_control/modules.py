@@ -259,7 +259,9 @@ class abbRobot():
             self.cur_wrenches[-1] = new
 
     def current_ft(self):
-        return np.mean(self.cur_wrenches,axis=0)
+        with self.lock:
+            w = np.mean(self.cur_wrenches, axis=0)
+        return w
 
     def get_current_cartesian(self):
         pos = self.GetCartesian()

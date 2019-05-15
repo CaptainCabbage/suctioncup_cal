@@ -48,6 +48,7 @@ class taskModel2():
 
         # compliant mapping
         self.vc_mapping = gripperMapping(mapping_file)
+        #self.vc_mapping = compliantMapping(mapping_file)
 
         #
         self.J_env = func_J_env(self.envc1,self.envc1_w,self.envc2, self.envc2_w)
@@ -118,11 +119,12 @@ class taskModel2():
         # compute config
         self.contact_traj[i,0:3] = np.dot(quat2rotm(self.obj_traj[i,3:]),self.pc) + self.obj_traj[i,0:3]
         self.contact_traj[i,3:] = quat_mul(self.qc,self.obj_traj[i,3:])
+        print('estimated config', self.config_traj[i])
 
         R_config = quat2rotm(self.config_traj[i,3:])
         self.force_traj[i,:] = np.dot(adjointTrans(R_config.T, -np.dot(R_config.T,self.config_traj[i,0:3]).T),-ft_force)# adjoint trans
 
-    def position_optimal_control(self, ft_force, v_obj_star):
+    def position_optimal_control_pre(self, ft_force, v_obj_star):
         # return
         print('OPTIMAL CONTROL')
         print('sensed force:', ft_force)
@@ -145,6 +147,9 @@ class taskModel2():
         q_obj_ = x_obj_[3:]
         R_obj_ = quat2rotm(q_obj_)
 
+        R_contact_ = np.dot(R_obj_,self.Rc)
+        p_contact_ = p_obj_ + np.dot(R_obj_,self.pc)
+
 
         x_config_ = np.append(p_config_,rotm2exp(R_config_))
         K_config = self.vc_mapping.Kfx(x_config_.reshape(1, -1)) #force exert on the rigid end relative to rigid end pos change
@@ -160,6 +165,7 @@ class taskModel2():
         # force eq
         J_co = adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc)).T
         G_o = np.concatenate((np.dot(R_obj_.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0)
+        print('G_o',G_o)
 
         ADG_env = np.zeros([6,6])
         ADG_env[0:3,0:3] = R_obj_.T
@@ -191,11 +197,12 @@ class taskModel2():
         adg_robot2obj = adjointTrans(np.dot(R_robot_.T,R_obj_), np.dot(R_robot_.T,p_robot_ - p_obj_))
         adg_contact2robot = np.dot(adg_robot2obj,adg_contact)
 
-        adg_vobj = np.linalg.multi_dot([adg_config_T,K_spring,adg_contact2robot])
+        #adg_vobj = np.linalg.multi_dot([adg_config_T,K_spring,adg_contact2robot])
+        adg_vobj = np.linalg.multi_dot([adg_config_T, K_spring, adg_contact])
         J3 = np.zeros([6,24])
         J3[:,0:6] = -adg_vobj
-        J3[:,6:12] = np.linalg.multi_dot([adg_config_T,K_spring,np.identity(6)])
-        J3[:-1,18:23] = np.identity(5) # f_contact[6] doesnt matter
+        J3[:,6:12] = np.linalg.multi_dot([adg_config_T,K_spring,adjointTrans(R_contact_.T,-np.dot(R_contact_.T,p_contact_))])
+        J3[:-1,18:23] = -np.identity(5) # f_contact[6] doesnt matter
         #constraints3 = LinearConstraint(J3,np.dot(adg_config_T,f_spring_),np.dot(adg_config_T,f_spring_))
 
         # constraint 4: in the friction cone: only consider about the env force for now
@@ -205,30 +212,34 @@ class taskModel2():
             J4[k,12:15] = d_k
             J4[k+8,15:18] = d_k
 
-        #constraints4 = LinearConstraint(J4,np.full(16, 1), np.full(16, 1))#, keep_feasible=True)
-
-        #J_all = np.concatenate((J1,J2,J3,J4))
-        #cons_lb = np.concatenate((np.concatenate((np.zeros(6),-G_o)),v_obj_star,np.dot(adg_config_T,f_spring_),
-        #                         np.full(16, 0)))
-        #cons_ub = np.concatenate((np.concatenate((np.zeros(6), -G_o)), v_obj_star, np.dot(adg_config_T, f_spring_),
-        #                         np.full(16, np.inf)))
-        #constraints_all = LinearConstraint(J_all, cons_lb, cons_ub)
+        # constraints on env contact force
+        J5 = np.zeros([3,24])
+        J5[0,14] = 1
+        J5[0,17] = -1
+        J5[1,12] = 1
+        J5[1,15] = -1
+        J5[2,13] = 1
+        J5[2,16] = 1
 
         # use quadprog
         P = np.identity(24)#np.zeros([24,24])
-        #P[0:12,0:12] = np.identity(12)
         #Q[12:,12:] = 10*Q[12:,12:]
         p = np.zeros(24)
         p[18:] = -f_contact
-        A_ = np.concatenate((J1,J2,J3))
-        b_ = np.concatenate((np.zeros(6),-G_o,v_obj_star,
-                           np.dot(adg_config_T,f_spring_)))
+        #A_ = np.concatenate((J1,J2,J3,J5))
+        #b_ = np.concatenate((np.zeros(6),-G_o,v_obj_star,
+        #                   np.dot(adg_config_T,f_spring_),np.zeros(3)))
+        A = np.concatenate((J1[6:,:],J2,J5))
+        b = np.concatenate((-G_o,v_obj_star,np.zeros(3)))
 
+        '''
         M = np.concatenate((A_,b_.reshape(-1,1)),axis=1)
-        Q,R = np.linalg.qr(M)
-        r_M = np.linalg.matrix_rank(M[:,:-1])
-        A = R[0:r_M,0:-1]
-        b = R[0:r_M,-1]
+        U, S, Vh = np.linalg.svd(M)
+        r_M = np.linalg.matrix_rank(M)
+        M_ = Vh[:,0:r_M].T
+        A = M_[:,:-1]
+        b = M_[:,-1]
+        '''
 
         #G_bound = np.concatenate((np.identity(24),-np.identity(24)))
         #h_ub = np.array([5,5,5,5*np.pi/180,5*np.pi/180,5*np.pi/180,10,10,10,10*np.pi/180,10*np.pi/180,10*np.pi/180,20,20,20,20,20,20,20,20,20,500,500,500])
@@ -245,8 +256,9 @@ class taskModel2():
         G_bound3 = np.zeros([1,24])
         G_bound3[0,8] = 1
 
-        G = np.concatenate((-J4, G_bound1, -G_bound1,-G_bound3))#,G_bound2,-G_bound2))
-        h = np.concatenate((np.zeros(16),-h_lb1,3*h_lb1,np.ones(1)*5))#,np.ones(6),np.ones(6)))
+        G = np.concatenate((-J4, G_bound1, -G_bound1,-G_bound3,G_bound2,-G_bound2))
+        h = np.concatenate((np.zeros(16),-h_lb1,3*h_lb1,np.ones(1)*5,np.ones(6),np.ones(6)))
+
         '''
         M = np.concatenate((G_,h_.reshape(-1,1)),axis=1)
         Q,R = np.linalg.qr(M)
@@ -256,7 +268,7 @@ class taskModel2():
         '''
         #G = -J4
         #h = np.zeros(16)
-        solvers.options['show_progress'] = False
+        solvers.options['show_progress'] = True
 
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
@@ -264,6 +276,134 @@ class taskModel2():
         print(sol['iterations'])
         print(np.array(sol['x']).reshape(-1))
         return np.array(sol['x']).reshape(-1)
+
+    def position_optimal_control(self, ft_force, v_obj_star):
+        # return
+        print('OPTIMAL CONTROL')
+        print('sensed force:', ft_force)
+        print('obj velocity goal:', v_obj_star)
+
+        i = self.current_timestep
+
+        x_robot_=self.end_traj[i]
+        p_config_ = self.config_traj[i,0:3]
+        R_config_ = quat2rotm(self.config_traj[i,3:])
+        f_config_ = -ft_force
+        adg_config_T = adjointTrans(R_config_.T, -np.dot(R_config_.T,p_config_).T).T
+        f_contact =  np.dot(adg_config_T,-ft_force)
+
+        x_obj_ = self.obj_traj[i]
+
+        p_robot_ = x_robot_[0:3]
+        R_robot_ = quat2rotm(x_robot_[3:])
+        p_obj_ = x_obj_[0:3]
+        q_obj_ = x_obj_[3:]
+        R_obj_ = quat2rotm(q_obj_)
+
+        R_contact_ = np.dot(R_obj_,self.Rc)
+        p_contact_ = p_obj_ + np.dot(R_obj_,self.pc)
+
+
+        x_config_ = np.append(p_config_,rotm2exp(R_config_))
+        K_config = self.vc_mapping.Kfx(x_config_.reshape(1, -1)) #force exert on the rigid end relative to rigid end pos change
+        #K_config = -np.diag([10,10,10,200,200,200])
+        K_spring = K_config
+        f_spring_ = f_config_
+        print('K_spring',K_spring)
+
+        # constraints matrix
+        #1 env_constraints
+        J_env = np.dot(self.J_env(x_obj_.reshape(7,1), x_robot_.reshape(7,1)), J_general_vel(x_obj_, x_robot_)) # J_env*x = 0
+        # force eq
+        J_co = adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc)).T
+        G_o = np.concatenate((np.dot(R_obj_.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0)
+        print('G_o',G_o)
+
+        ADG_env = np.zeros([6,6])
+        ADG_env[0:3,0:3] = R_obj_.T
+        ADG_env[0:3,3:] = R_obj_.T
+        ADG_env[3:,0:3] = np.dot(skew_sym(self.envc1),R_obj_.T)
+        ADG_env[3:,3:] = np.dot(skew_sym(self.envc2), R_obj_.T)
+        J_force = np.concatenate((ADG_env,J_co),axis=1)
+        print(ADG_env)
+
+        J1 = np.zeros([12,24])
+        J1[0:6,0:12] = J_env
+        J1[6:,12:] = J_force
+
+        #2 goal satisfy
+        # vel goal
+        # Gv*v = v_goal
+        Sv = np.identity(6)
+        J2 = np.concatenate((Sv,np.zeros([6,18])),axis=1)
+        #constraints2 = LinearConstraint(J2, v_obj_star, v_obj_star)
+        # force goal
+        # Gf*fcontact = fcontact_goal
+
+        # constraint 4: in the friction cone: only consider about the env force for now
+        J4 = np.zeros([16,24])
+        for k in range(8):
+            d_k = np.array([-np.sin(k*np.pi/4),-np.cos(k*np.pi/4),self.fric_mu])
+            J4[k,12:15] = d_k
+            J4[k+8,15:18] = d_k
+
+        # constraints on env contact force
+        J5 = np.zeros([3,24])
+        J5[0,14] = J5[1,12] = J5[2,13] = J5[2,16] =1
+        J5[0,17] = J5[1,15] = -1
+
+        # use quadprog
+        P = np.identity(24)
+        p = np.zeros(24)
+        p[18:] = -f_contact
+
+        A = np.concatenate((J1[6:,:],J2,J5))
+        b = np.concatenate((-G_o,v_obj_star,np.zeros(3)))
+
+        G_bound1 = np.zeros([2,24])
+        G_bound1[0,14] = G_bound1[1,17] = -1
+        h_lb1 = np.ones(2)*3
+
+
+        G = np.concatenate((-J4, G_bound1,))
+        h = np.concatenate((np.zeros(16),-h_lb1))
+
+        #G = -J4
+        #h = np.zeros(16)
+        solvers.options['show_progress'] = True
+
+        sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
+        print(sol['status']),
+        print('solution after total iterations of'),
+        print(sol['iterations'])
+        print(np.array(sol['x']).reshape(-1))
+        res_x = np.array(sol['x']).reshape(-1)
+
+        x_obj_spatial = np.dot(adjointTrans(R_obj_, p_obj_), res_x[0:6])
+        dp_obj = x_obj_spatial[0:3]
+        dq_obj = exp2quat(x_obj_spatial[3:6])
+        p_obj = p_obj_ + dp_obj
+        q_obj = quat_mul(dq_obj, q_obj_)
+
+        K_inv = np.zeros([6,6])
+        K_inv[0:5,0:5] = np.linalg.inv(K_spring[0:5,0:5])
+        df_contact = res_x[18:] - f_contact
+        df_config = np.dot(adjointTrans(R_config_, p_config_).T,df_contact)
+        dx_config = np.dot(K_inv, df_config)
+        ub_x = np.array([2, 2, 5, 3 * np.pi / 180, 3 * np.pi / 180, 3 * np.pi / 180])
+        lb_x = -ub_x
+        dx_config = np.minimum(dx_config, ub_x)
+        dx_config = np.maximum(dx_config, lb_x)
+        x_config = x_config_ + dx_config
+
+
+        #x_config = self.vc_mapping.Mapping(res_x[18:].reshape(1,-1),'contact_wrench','config').reshape(-1)
+        R_config = exp2rotm(x_config[3:])
+        p_config = x_config[0:3]
+        gr = np.linalg.multi_dot([homo_g(quat2rotm(q_obj),p_obj), homo_g(self.Rc,self.pc), homo_g(R_config,p_config)])
+        x_robot = np.concatenate((gr[0:3,-1].reshape(-1),rotm2quat(gr[0:3,0:3]).reshape(-1)))
+
+        return x_robot
 
     def state_model(self,ut, x_robot_, x_config_, f_config_,x_obj_):
         # p_robot : the position of the rigid end
