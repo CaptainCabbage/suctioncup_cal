@@ -369,7 +369,7 @@ class taskModel2():
         G_bound1 = np.zeros([2,24])
         G_bound1[0,14] = G_bound1[1,17] = -1
 
-        h_lb1 = np.ones(2)*3
+        h_lb1 = np.ones(2)*5
 
         G_bound2 = np.zeros([1,24])
         G_bound2[0,20] = 1
