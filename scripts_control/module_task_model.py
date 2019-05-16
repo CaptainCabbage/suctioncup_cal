@@ -57,9 +57,9 @@ class taskModel2():
         # raw_wrench -> actual wrench applied on the right end
         #R: raw_wrench corresponding robot orientation
         R = quat2rotm(q_robot)
-        G = [-0.0435, -0.0621, -1.4]
-        P =  [0.000786, -0.00269, -0.0709]
-        ft_offset = [ 1.03, 2.19, -2.28, 0.215, -0.0865, -0.0101]
+        G = [-0.206,0.00476,-1.47]#[-0.0435, -0.0621, -1.4]
+        P = [-0.00235,-0.00548,-0.0679]#[0.000786, -0.00269, -0.0709] # center of mass
+        ft_offset = [0.269,2.49,-2.74,0.254,-0.0774,0.00123]#[ 1.03, 2.19, -2.28, 0.215, -0.0865, -0.0101]
         p_st =np.array([0, 0, 0.0962])
         #q_st =  [0.5556, 0, 0, 0.8315]; #qw: 0.5556 qx: 0 qy: 0 qz: 0.8315
         #R_st = np.array([[-0.3827,-0.9239,0],[0.9239,-0.3827,0],[0,0,1.0000]]) #112.5 degree
@@ -91,7 +91,8 @@ class taskModel2():
         #print('x_config_guess', x_config_guess)
 
         # use x-config guess from mapping(inaccurate) and reference obj traj (assume small error) to estimate the true state
-        if i==0:
+        if i>=0:
+            '''
             x = self.state_model(np.zeros(6), self.end_traj[i], x_config_guess, ft_force, self.ref_obj_traj[i])
             dp_obj = x[0:3]
             dq_obj = x[3:7] / np.linalg.norm(x[3:7])
@@ -101,6 +102,9 @@ class taskModel2():
             self.obj_traj[i, 3:] = quat_mul(dq_obj, self.ref_obj_traj[i, 3:])
             self.config_traj[i, 0:3] = x_config_guess[0:3] + dp_config
             self.config_traj[i, 3:] = quat_mul(dq_config, exp2quat(x_config_guess[3:]))
+            '''
+            self.obj_traj[i,:] = self.ref_obj_traj[i, :]
+            self.config_traj[i] = g2cart(np.linalg.multi_dot([cart2g_inv(np.concatenate((self.pc,self.qc))),cart2g_inv(self.obj_traj[i]),cart2g(self.end_traj[i])]))
 
         else:
             x = self.linear_state_estimation(self.end_traj[i], self.end_traj[i-1], self.config_traj[i-1],self.obj_traj[i-1], ft_force)
@@ -156,7 +160,7 @@ class taskModel2():
         #K_config = -np.diag([10,10,10,200,200,200])
         K_spring = K_config
         f_spring_ = f_config_
-        print('K_spring',K_spring)
+        #print('K_spring',K_spring)
 
 
         # constraints matrix
@@ -165,7 +169,7 @@ class taskModel2():
         # force eq
         J_co = adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc)).T
         G_o = np.concatenate((np.dot(R_obj_.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0)
-        print('G_o',G_o)
+        #print('G_o',G_o)
 
         ADG_env = np.zeros([6,6])
         ADG_env[0:3,0:3] = R_obj_.T
@@ -173,7 +177,7 @@ class taskModel2():
         ADG_env[3:,0:3] = np.dot(skew_sym(self.envc1),R_obj_.T)
         ADG_env[3:,3:] = np.dot(skew_sym(self.envc2), R_obj_.T)
         J_force = np.concatenate((ADG_env,J_co),axis=1)
-        print(ADG_env)
+        #print(ADG_env)
 
         J1 = np.zeros([12,24])
         J1[0:6,0:12] = J_env
@@ -268,7 +272,7 @@ class taskModel2():
         '''
         #G = -J4
         #h = np.zeros(16)
-        solvers.options['show_progress'] = True
+        solvers.options['show_progress'] = False
 
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
@@ -309,7 +313,7 @@ class taskModel2():
         #K_config = -np.diag([10,10,10,200,200,200])
         K_spring = K_config
         f_spring_ = f_config_
-        print('K_spring',K_spring)
+        #print('K_spring',K_spring)
 
         # constraints matrix
         #1 env_constraints
@@ -317,7 +321,7 @@ class taskModel2():
         # force eq
         J_co = adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc)).T
         G_o = np.concatenate((np.dot(R_obj_.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0)
-        print('G_o',G_o)
+        #print('G_o',G_o)
 
         ADG_env = np.zeros([6,6])
         ADG_env[0:3,0:3] = R_obj_.T
@@ -325,7 +329,7 @@ class taskModel2():
         ADG_env[3:,0:3] = np.dot(skew_sym(self.envc1),R_obj_.T)
         ADG_env[3:,3:] = np.dot(skew_sym(self.envc2), R_obj_.T)
         J_force = np.concatenate((ADG_env,J_co),axis=1)
-        print(ADG_env)
+
 
         J1 = np.zeros([12,24])
         J1[0:6,0:12] = J_env
@@ -354,23 +358,30 @@ class taskModel2():
 
         # use quadprog
         P = np.identity(24)
+        P[21:,21:] = 0.0008*np.identity(3)
         p = np.zeros(24)
         p[18:] = -f_contact
+        p[21:] = 0.0008*p[21:]
 
         A = np.concatenate((J1[6:,:],J2,J5))
         b = np.concatenate((-G_o,v_obj_star,np.zeros(3)))
 
         G_bound1 = np.zeros([2,24])
         G_bound1[0,14] = G_bound1[1,17] = -1
+
         h_lb1 = np.ones(2)*3
 
+        G_bound2 = np.zeros([1,24])
+        G_bound2[0,20] = 1
 
-        G = np.concatenate((-J4, G_bound1,))
-        h = np.concatenate((np.zeros(16),-h_lb1))
+
+
+        G = np.concatenate((-J4, G_bound1,G_bound2))
+        h = np.concatenate((np.zeros(16),-h_lb1,np.ones(1)*20))
 
         #G = -J4
         #h = np.zeros(16)
-        solvers.options['show_progress'] = True
+        solvers.options['show_progress'] = False
 
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
@@ -390,11 +401,13 @@ class taskModel2():
         df_contact = res_x[18:] - f_contact
         df_config = np.dot(adjointTrans(R_config_, p_config_).T,df_contact)
         dx_config = np.dot(K_inv, df_config)
-        ub_x = np.array([2, 2, 5, 3 * np.pi / 180, 3 * np.pi / 180, 3 * np.pi / 180])
+        ub_x = np.array([1, 1, 2, 1 * np.pi / 180, 1 * np.pi / 180, 1 * np.pi / 180])
         lb_x = -ub_x
         dx_config = np.minimum(dx_config, ub_x)
         dx_config = np.maximum(dx_config, lb_x)
         x_config = x_config_ + dx_config
+        print('dx_config',dx_config)
+        print('x_config',x_config)
 
 
         #x_config = self.vc_mapping.Mapping(res_x[18:].reshape(1,-1),'contact_wrench','config').reshape(-1)
@@ -558,6 +571,7 @@ class taskModel2():
         R_robot_ = quat2rotm(x_robot_[3:])
         # compute robot spatial vel
         v_robot_spatial = np.concatenate((np.linalg.multi_dot([-R_robot,R_robot_.T,x_robot_[0:3]])+x_robot_[0:3],rotm2exp(np.dot(R_robot,R_robot_.T))))
+        print('v_robot_spatial',v_robot_spatial)
         # compute robot constraint matrix: J_robot*x = v_robot_spatial
         J_robot = np.zeros((6,12))
         J_robot[0:6,0:6] = adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])#np.identity(6)
@@ -578,10 +592,14 @@ class taskModel2():
         #G = np.concatenate((np.identity(12),-np.identity(12)))
         adg_obj =adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])
         G= -np.concatenate((np.zeros(6),adg_obj[2])).reshape(1,-1)
-        #bound = np.array([10,10,10,np.pi/2,np.pi/2,np.pi/2,10,10,10,np.pi/2,np.pi/2,np.pi/2])
+        h = np.array([-(x_obj_[2] - self.obj_lz)])
+        G_bound = np.concatenate((np.identity(12),-np.identity(12)))
+        bound = np.array([3,3,3,3*np.pi/180,3*np.pi/180,3*np.pi/180,3,3,3,3*np.pi/180,3*np.pi/180,3*np.pi/180])
         #h = np.concatenate((bound,bound))
-        h = -(x_obj_[2] - self.obj_lz)
-        solvers.options['show_progress'] = False
+        G = np.concatenate((G,G_bound))
+        h = np.concatenate((h,bound,bound))
+
+        solvers.options['show_progress'] = True
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         print(sol['status']),
         print('solution after total iterations of'),
@@ -687,14 +705,12 @@ class gripperMapping():
         #return self.local_lr(x_pos,'config','wrench').coef_
 
     def Mapping(self, x, X_name, Y_name):
-        print(x)
+
         K, x0, y0,r_max = self.local_lr_possemidef(x, X_name, Y_name)
         x = x.reshape(-1)
         r = np.linalg.norm(x[:-1]-x0[:-1])
         if r > 1.2*r_max:
             x = x*1.2*r_max/r
-        print('Kx:',np.dot(K, (x - x0).T).reshape(-1))
-        print('y0:',y0)
         y_predict = np.dot(K, (x - x0).T).reshape(-1) + y0
 
         return y_predict

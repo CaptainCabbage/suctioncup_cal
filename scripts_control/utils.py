@@ -25,6 +25,24 @@ def homo_g(R,p):
     g[0:3,-1] = p
     return g
 
+def cart2g(p):
+    g= np.identity(4)
+    g[0:3,0:3] = quat2rotm(p[3:])
+    g[0:3,-1] = p[0:3]
+    return g
+
+def cart2g_inv(p):
+    g= np.identity(4)
+    g[0:3,0:3] = quat2rotm(p[3:]).T
+    g[0:3,-1] = -np.dot(g[0:3,0:3],p[0:3])
+    return g
+
+def g2cart(g):
+    p = np.zeros(7)
+    p[0:3] = g[0:3,-1]
+    p[3:] = rotm2quat(g[0:3,0:3])
+    return p
+
 def quat_tr2ros(q_tr):
     # q_tr: x y z w
     # q_ros: w x y z
