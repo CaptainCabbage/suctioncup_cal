@@ -114,6 +114,15 @@ def adjointTrans(R,p):
     #adg = [R,P*R;zeros(3,3) R];
     return adg
 
+def adjointTrans_inv(R,p):
+    P = np.array([[0,-p[2],p[1]],[p[2], 0, -p[0]],[-p[1], p[0], 0]])
+    adg = np.zeros([6,6])
+    adg[0:3,0:3]=R.T
+    adg[3:,3:]=R.T
+    adg[0:3,3:] = -np.dot(R.T,P)
+    #adg = [R,P*R;zeros(3,3) R];
+    return adg
+
 def exp2rotm(x):
     if sum(x == 0) == 3:
         Rx = np.identity(3)
