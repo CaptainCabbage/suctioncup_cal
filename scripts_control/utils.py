@@ -205,3 +205,30 @@ def posdef_estimation(A,B):
 def skew_sym(x):
     X = np.array([[0,-x[2],x[1]],[x[2],0,-x[0]],[-x[1],x[0],0]])
     return X
+
+def twist2g(t):
+    theta = np.linalg.norm(t[3:])
+    w = t[3:]/theta
+    v = t[0:3]/theta
+
+    g = np.identity(4)
+    if np.linalg.norm(w) == 0:
+        g[0:3,3] = v*theta
+    else:
+        g[0:3,0:3] = exp2rotm(w*theta)
+        g[0:3,3] = np.dot(np.identity(3) - g[0:3,0:3],np.cross(w,v)) + np.dot(w.reshape(-1,1), w.reshape(1,-1)).dot(v)*theta
+
+    return g
+
+def g2twist(g):
+    w = rotm2exp(g[0:3,0:3]).reshape(-1)
+    theta = np.linalg.norm(w)
+    if theta == 0:
+        v = g[0:3,3].reshape(-1)
+        t = np.concatenate((v,w))
+    else:
+        w = w/theta
+        A = np.dot(np.identity(3) - g[0:3,0:3], skew_sym(w)) + np.dot(w.reshape(-1,1), w.reshape(1,-1))*theta
+        v = np.dot(np.linalg.inv(A),g[0:3,3]).reshape(-1)
+        t = np.concatenate((v,w))*theta
+    return t

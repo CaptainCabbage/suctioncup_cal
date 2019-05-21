@@ -85,22 +85,17 @@ class taskModel2():
         self.end_traj[i] = self.actual2robot(actual_cartesian)
         #print('current robot:',self.end_traj[i])
 
-        if i>=0:
+        if i==0:
 
             self.obj_traj[i,:] = self.ref_obj_traj[i, :]
             self.config_traj[i] = g2cart(np.linalg.multi_dot([cart2g_inv(np.concatenate((self.pc,self.qc))),cart2g_inv(self.obj_traj[i]),cart2g(self.end_traj[i])]))
 
         else:
             x = self.linear_state_estimation(self.end_traj[i], self.end_traj[i-1], self.config_traj[i-1],self.obj_traj[i-1], ft_force)
-            x_obj_spatial = np.dot(adjointTrans(quat2rotm(self.obj_traj[i-1,3:]),self.obj_traj[i-1,0:3]),x[0:6])
-            dp_obj = x_obj_spatial[0:3]
-            dq_obj = exp2quat(x_obj_spatial[3:6])
-            dp_config = x[6:9]
-            dq_config = exp2quat(x[9:12])
-            self.obj_traj[i,0:3] = self.obj_traj[i-1,0:3] + dp_obj
-            self.obj_traj[i,3:] = quat_mul(dq_obj, self.obj_traj[i-1,3:])
-            self.config_traj[i, 0:3] = self.config_traj[i-1,0:3] + dp_config
-            self.config_traj[i, 3:] = quat_mul(dq_config, self.config_traj[i-1,3:])
+            x_obj_body = x[0:6]
+            x_config_s = x[6:12]
+            self.obj_traj[i] = g2cart(np.dot(cart2g(self.obj_traj[i-1]), twist2g(x_obj_body)))
+            self.config_traj[i] = g2cart(np.dot(twist2g(x_config_s),cart2g(self.config_traj[i-1])))
 
         print('estimated obj', self.obj_traj[i])
 
@@ -132,14 +127,9 @@ class taskModel2():
 
         x_obj_ = self.obj_traj[i]
 
-        p_robot_ = x_robot_[0:3]
-        R_robot_ = quat2rotm(x_robot_[3:])
         p_obj_ = x_obj_[0:3]
         q_obj_ = x_obj_[3:]
         R_obj_ = quat2rotm(q_obj_)
-
-        R_contact_ = np.dot(R_obj_,self.Rc)
-        p_contact_ = p_obj_ + np.dot(R_obj_,self.pc)
 
 
         x_config_ = np.append(p_config_,rotm2exp(R_config_))
@@ -204,7 +194,7 @@ class taskModel2():
         G_bound1 = np.zeros([2,24])
         G_bound1[0,14] = G_bound1[1,17] = -1
 
-        h_lb1 = np.ones(2)*3
+        h_lb1 = np.ones(2)*5
 
         G_bound2 = np.zeros([1,24])
         G_bound2[0,20] = 1
@@ -225,11 +215,9 @@ class taskModel2():
         print(np.array(sol['x']).reshape(-1))
         res_x = np.array(sol['x']).reshape(-1)
 
-        x_obj_spatial = np.dot(adjointTrans(R_obj_, p_obj_), res_x[0:6])
-        dp_obj = x_obj_spatial[0:3]
-        dq_obj = exp2quat(x_obj_spatial[3:6])
-        p_obj = p_obj_ + dp_obj
-        q_obj = quat_mul(dq_obj, q_obj_)
+        x_obj_body = res_x[0:6]
+        gwo = np.dot(cart2g(self.obj_traj[i]), twist2g(x_obj_body))
+        #x_obj = g2cart(np.dot(cart2g(self.obj_traj[i]), twist2g(x_obj_body)))
 
         K_inv = np.zeros([6,6])
         K_inv[0:5,0:5] = np.linalg.inv(K_spring[0:5,0:5])
@@ -248,33 +236,39 @@ class taskModel2():
         #x_config = self.vc_mapping.Mapping(res_x[18:].reshape(1,-1),'contact_wrench','config').reshape(-1)
         R_config = exp2rotm(x_config[3:])
         p_config = x_config[0:3]
-        gr = np.linalg.multi_dot([homo_g(quat2rotm(q_obj),p_obj), homo_g(self.Rc,self.pc), homo_g(R_config,p_config)])
-        x_robot = np.concatenate((gr[0:3,-1].reshape(-1),rotm2quat(gr[0:3,0:3]).reshape(-1)))
+        gr = np.linalg.multi_dot([gwo, homo_g(self.Rc,self.pc), homo_g(R_config,p_config)])
+        x_robot = g2cart(gr)
 
         return x_robot
 
     def linear_state_estimation(self, x_robot, x_robot_, x_config_, x_obj_, ft_force):
-        # x: v_obj_body, v_config_body
+        # x: v_obj_body, v_config_s
         x_config_guess = self.vc_mapping.Mapping(-ft_force.reshape(1, -1), 'wrench', 'config').reshape(-1)
         print('x_config_guess',x_config_guess)
-        dx_config_guess = x_config_guess - np.concatenate((x_config_[0:3],quat2exp(x_config_[3:])))
-        R_robot = quat2rotm(x_robot[3:])
-        R_robot_ = quat2rotm(x_robot_[3:])
+        #dx_config_guess = x_config_guess - np.concatenate((x_config_[0:3],quat2exp(x_config_[3:])))
+        dx_config_guess = g2twist(np.dot(twist2g(x_config_guess),cart2g_inv(x_config_)))
+
         # compute robot spatial vel
-        v_robot_spatial = np.concatenate((np.linalg.multi_dot([-R_robot,R_robot_.T,x_robot_[0:3]])+x_robot[0:3],rotm2exp(np.dot(R_robot,R_robot_.T))))
+        gs = np.dot(cart2g(x_robot),cart2g_inv(x_robot_))
+        v_robot_spatial = g2twist(gs)
         print('v_robot_spatial',v_robot_spatial)
+
         # compute robot constraint matrix: J_robot*x = v_robot_spatial
         J_robot = np.zeros((6,12))
         J_robot[0:6,0:6] = adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])
-        J_robot[0:6, 6:] = adjointTrans(self.Rc, self.pc)
+        gwc = np.dot(cart2g(x_obj_),cart2g(np.concatenate((self.pc,self.qc))))
+        J_robot[0:6, 6:] = adjointTrans(gwc[0:3,0:3], gwc[0:3,3])
+
         # compute env constraint matrix: J_env*x = 0
         J_env = np.dot(self.J_env(x_obj_.reshape(7, 1), x_robot_.reshape(7, 1)),
                        J_general_vel(x_obj_, x_robot_))  # J_env*x = 0
+
         # reduce constraints matrix rows
         M = np.concatenate((np.concatenate((J_env, J_robot)), np.concatenate((np.zeros(6),v_robot_spatial)).reshape(-1,1)),axis=1)
 
         Q,R = np.linalg.qr(M)
         r_M = np.linalg.matrix_rank(M)
+
         A = R[0:r_M,0:-1]
         b = R[0:r_M,-1]
         # cost function

@@ -12,6 +12,11 @@ f_config_ = np.array([-0.7226,  0.0918, -3.684 , 16.1009, 13.5253, -4.4922])
 v_obj_star = np.array([0.5027,0,0.5027,0,0.0131,0])
 
 task_model.state_estimation(-f_config_, task_model.actual_start)
+g_goal = cart2g(task_model.ref_obj_traj[2])
+g_inv = cart2g_inv(task_model.obj_traj[0])
+g_b = np.dot(g_inv, g_goal)
+v_obj_b = g2twist(g_b)
+print('!!!v_obj_b', v_obj_b)
 dut=task_model.position_optimal_control(-f_config_, v_obj_star)
 task_model.current_timestep += 1
 task_model.state_estimation(-f_config_, robot_cartesian)
