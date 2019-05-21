@@ -10,7 +10,8 @@ task_model = taskModel2('vc_calibration_Nmm.json','task_model_90.json')
 
 robot = abbRobot()
 robot.initialize()
-robot.SetSpeed(5,3)
+#robot.SetSpeed(5,3)
+robot.SetSpeed(10,5)
 
 p0 = np.zeros(7)
 p0[0:3] = task_model.actual_start[0:3]
@@ -37,7 +38,7 @@ while i < 120-1:
     actual_cartesian = np.array(robot.get_current_cartesian())
     robot_cartesian = task_model.actual2robot(actual_cartesian)
     cur_wrench = task_model.wrench_compensation(robot.current_ft(), actual_cartesian[3:])
-    cur_wrench[3:] = cur_wrench[3:] + np.array([52,4,15])
+    cur_wrench[3:] = cur_wrench[3:] + np.array([-12,11,5.4])
 
     print('cur wrench',cur_wrench)
 
@@ -45,6 +46,7 @@ while i < 120-1:
     q_obj_w = quat_mul(task_model.ref_obj_traj[i+1,3:],quat_conj(task_model.obj_traj[i,3:]))
     v_obj_w = np.concatenate((task_model.ref_obj_traj[i+1,0:3]-task_model.obj_traj[i,0:3],quat2exp(q_obj_w)))
     v_obj_b = adjointTrans(quat2rotm(task_model.obj_traj[i,3:]).T, -np.dot(quat2rotm(task_model.obj_traj[i,3:]).T,task_model.obj_traj[i,0:3])).dot(v_obj_w)
+    print('v_obj_b',v_obj_b)
     robot_ut = task_model.position_optimal_control(cur_wrench, task_model.ref_obj_vel_traj[i])
 
     actual_ut = task_model.robot2actual(robot_ut)

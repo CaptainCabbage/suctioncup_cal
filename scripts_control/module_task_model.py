@@ -59,7 +59,8 @@ class taskModel2():
         R = quat2rotm(q_robot)
         G = [-0.206,0.00476,-1.47]#[-0.0435, -0.0621, -1.4]
         P = [-0.00235,-0.00548,-0.0679]#[0.000786, -0.00269, -0.0709] # center of mass
-        ft_offset = [0.269,2.49,-2.74,0.254,-0.0774,0.00123]#[ 1.03, 2.19, -2.28, 0.215, -0.0865, -0.0101]
+        ft_offset = [0.219,2.45,-2.78,0.263,-0.0774,-0.00523]
+        #ft_offset = [0.269,2.49,-2.74,0.254,-0.0774,0.00123]#[ 1.03, 2.19, -2.28, 0.215, -0.0865, -0.0101]
         p_st =np.array([0, 0, 0.0962])
         #q_st =  [0.5556, 0, 0, 0.8315]; #qw: 0.5556 qx: 0 qy: 0 qz: 0.8315
         #R_st = np.array([[-0.3827,-0.9239,0],[0.9239,-0.3827,0],[0,0,1.0000]]) #112.5 degree
@@ -84,13 +85,7 @@ class taskModel2():
         self.end_traj[i] = self.actual2robot(actual_cartesian)
         #print('current robot:',self.end_traj[i])
 
-        # estimation
-        x_config_guess = self.vc_mapping.Mapping(-ft_force.reshape(1,-1), 'wrench', 'config').reshape(-1)
-        print('x_config_guess',x_config_guess)
-        #print('x_config_guess', x_config_guess)
-
-        # use x-config guess from mapping(inaccurate) and reference obj traj (assume small error) to estimate the true state
-        if i==0:
+        if i>=0:
 
             self.obj_traj[i,:] = self.ref_obj_traj[i, :]
             self.config_traj[i] = g2cart(np.linalg.multi_dot([cart2g_inv(np.concatenate((self.pc,self.qc))),cart2g_inv(self.obj_traj[i]),cart2g(self.end_traj[i])]))
@@ -115,7 +110,9 @@ class taskModel2():
         print('estimated config', self.config_traj[i])
 
         R_config = quat2rotm(self.config_traj[i,3:])
+        adg_temp = adjointTrans(R_config.T,-np.dot(R_config.T,self.config_traj[i,0:3])).T
         self.force_traj[i,:] = np.dot(adjointTrans_inv(R_config,self.config_traj[i,0:3]).T,-ft_force)# adjoint trans
+        #self.force_traj[i,:] = np.dot(adg_temp,-ft_force)
 
     def position_optimal_control(self, ft_force, v_obj_star):
         # return
@@ -130,6 +127,7 @@ class taskModel2():
         R_config_ = quat2rotm(self.config_traj[i,3:])
         f_config_ = -ft_force
         adg_config_T = adjointTrans_inv(R_config_,p_config_).T
+        #adg_config_T = adjointTrans(R_config_.T,-np.dot(R_config_.T,p_config_)).T
         f_contact =  np.dot(adg_config_T,-ft_force)
 
         x_obj_ = self.obj_traj[i]
@@ -156,6 +154,7 @@ class taskModel2():
         J_env = np.dot(self.J_env(x_obj_.reshape(7,1), x_robot_.reshape(7,1)), J_general_vel(x_obj_, x_robot_)) # J_env*x = 0
         # force eq
         J_co = adjointTrans_inv(self.Rc,self.pc).T
+        #J_co = adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc))
         G_o = np.concatenate((np.dot(R_obj_.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0)
         #print('G_o',G_o)
 
@@ -205,7 +204,7 @@ class taskModel2():
         G_bound1 = np.zeros([2,24])
         G_bound1[0,14] = G_bound1[1,17] = -1
 
-        h_lb1 = np.ones(2)*5
+        h_lb1 = np.ones(2)*3
 
         G_bound2 = np.zeros([1,24])
         G_bound2[0,20] = 1
@@ -257,6 +256,7 @@ class taskModel2():
     def linear_state_estimation(self, x_robot, x_robot_, x_config_, x_obj_, ft_force):
         # x: v_obj_body, v_config_body
         x_config_guess = self.vc_mapping.Mapping(-ft_force.reshape(1, -1), 'wrench', 'config').reshape(-1)
+        print('x_config_guess',x_config_guess)
         dx_config_guess = x_config_guess - np.concatenate((x_config_[0:3],quat2exp(x_config_[3:])))
         R_robot = quat2rotm(x_robot[3:])
         R_robot_ = quat2rotm(x_robot_[3:])
