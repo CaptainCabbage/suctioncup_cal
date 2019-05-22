@@ -207,14 +207,14 @@ def skew_sym(x):
     return X
 
 def twist2g(t):
-    theta = np.linalg.norm(t[3:])
-    w = t[3:]/theta
-    v = t[0:3]/theta
-
     g = np.identity(4)
-    if np.linalg.norm(w) == 0:
-        g[0:3,3] = v*theta
+    theta = np.linalg.norm(t[3:])
+
+    if theta == 0:
+        g[0:3,3] = t[0:3]
     else:
+        w = t[3:] / theta
+        v = t[0:3] / theta
         g[0:3,0:3] = exp2rotm(w*theta)
         g[0:3,3] = np.dot(np.identity(3) - g[0:3,0:3],np.cross(w,v)) + np.dot(w.reshape(-1,1), w.reshape(1,-1)).dot(v)*theta
 

@@ -183,10 +183,12 @@ class taskModel2():
 
         # use quadprog
         P = np.identity(24)
-        P[21:,21:] = 0.0008*np.identity(3)
+        P[18:21,18:21] = 0.08*np.identity(3)
+        P[21:23,21:23] = 0.0008*np.identity(2)
         p = np.zeros(24)
         p[18:] = -f_contact
-        p[21:] = 0.0008*p[21:]
+        p[18:21] = 0.08*p[18:21]
+        p[21:23] = 0.0008*p[21:23]
 
         A = np.concatenate((J1[6:,:],J2,J5))
         b = np.concatenate((-G_o,v_obj_star,np.zeros(3)))
@@ -194,7 +196,7 @@ class taskModel2():
         G_bound1 = np.zeros([2,24])
         G_bound1[0,14] = G_bound1[1,17] = -1
 
-        h_lb1 = np.ones(2)*5
+        h_lb1 = np.ones(2)*4
 
         G_bound2 = np.zeros([1,24])
         G_bound2[0,20] = 1
@@ -237,6 +239,7 @@ class taskModel2():
         R_config = exp2rotm(x_config[3:])
         p_config = x_config[0:3]
         gr = np.linalg.multi_dot([gwo, homo_g(self.Rc,self.pc), homo_g(R_config,p_config)])
+        print(gr)
         x_robot = g2cart(gr)
 
         return x_robot
@@ -273,24 +276,28 @@ class taskModel2():
         b = R[0:r_M,-1]
         # cost function
         P = np.identity(12)
-        p = np.concatenate((np.zeros(6),-dx_config_guess))
+        P[6:,6:] = np.identity(6)*100
+        #p = np.zeros(12)
+        p = np.concatenate((np.zeros(6),-dx_config_guess))*100
         #G = np.concatenate((np.identity(12),-np.identity(12)))
         adg_obj =adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])
-        G= -np.concatenate((np.zeros(6),adg_obj[2])).reshape(1,-1)
-        h = np.array([-(x_obj_[2] - self.obj_lz)])
+        G= -np.concatenate((adg_obj[2],np.zeros(6))).reshape(1,-1)
+        h = np.array([(x_obj_[2] - self.obj_lz)])
         G_bound = np.concatenate((np.identity(12),-np.identity(12)))
-        bound = np.array([3,3,3,3*np.pi/180,3*np.pi/180,3*np.pi/180,3,3,3,3*np.pi/180,3*np.pi/180,3*np.pi/180])
+        bound = np.array([1,1,1,3*np.pi/180,3*np.pi/180,3*np.pi/180,3,3,3,3*np.pi/180,3*np.pi/180,3*np.pi/180])
         #h = np.concatenate((bound,bound))
         #G = np.concatenate((G,G_bound))
         #h = np.concatenate((h,bound,bound))
 
         solvers.options['show_progress'] = True
+        #solvers.options['feastol'] = 1e-4
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         res_x = np.array(sol['x']).reshape(-1)
         print(sol['status']),
         print('solution after total iterations of'),
         print(sol['iterations'])
         print(res_x)
+        ref_x = np.concatenate((np.zeros(6),np.dot(np.linalg.inv(J_robot[0:6,6:]),v_robot_spatial)))
         return res_x
 
     def actual2robot(self,p_actual_):

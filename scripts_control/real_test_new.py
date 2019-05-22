@@ -6,12 +6,12 @@ from module_task_model import *
 np.set_printoptions(precision=4, suppress=True)
 np.random.seed(100)
 
-task_model = taskModel2('vc_calibration_Nmm.json','task_model_90.json')
+task_model = taskModel2('vc_calibration_Nmm.json','task_model_90_middle.json')
 
 robot = abbRobot()
 robot.initialize()
 #robot.SetSpeed(5,3)
-robot.SetSpeed(10,5)
+robot.SetSpeed(10,10)
 
 p0 = np.zeros(7)
 p0[0:3] = task_model.actual_start[0:3]
