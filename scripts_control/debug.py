@@ -22,8 +22,7 @@ dut=task_model.position_optimal_control(-f_config_, v_obj_star)
 task_model.current_timestep += 1
 #task_model.state_estimation(-f_config_, robot_cartesian)
 '''
-#dut=task_model.position_optimal_control(-f_config_, v_obj_star)
-#print(dut)
+
 
 #robot_ut = dut
 #print('current position:',task_model.actual_start)
@@ -37,4 +36,5 @@ task_model.state_estimation(np.array([-1.003 ,  0.1049, -4.5877,  1.5108, 14.714
 task_model.current_timestep+=1
 task_model.state_estimation(np.array([-1.2757,  0.2377, -6.9784,  3.9926, 19.7487, -1.3256]),np.array([ 80.2304, 400.3329, 470.6574,  -0.    ,   0.9998,  -0.,-0.0222]))
 
-
+dut=task_model.position_optimal_control(-f_config_, v_obj_star)
+print(task_model.robot2actual(dut))

@@ -137,6 +137,8 @@ class taskModel2():
         #K_config = -np.diag([10,10,10,200,200,200])
         K_spring = K_config
         f_spring_ = f_config_
+        K_inv = np.zeros([6,6])
+        K_inv[0:5,0:5] = np.linalg.inv(K_spring[0:5,0:5])
         #print('K_spring',K_spring)
 
         # constraints matrix
@@ -169,6 +171,13 @@ class taskModel2():
         # force goal
         # Gf*fcontact = fcontact_goal
 
+        #3 robot vel & contact force change relationship
+        J3 = np.zeros([6,24])
+        J3[:,0:6] = adjointTrans(R_obj_, p_obj_)
+        J3[:,6:12] = -np.identity(6)
+        gwc = np.dot(cart2g(x_obj_), cart2g(np.concatenate((self.pc, self.qc))))
+        J3[:,18:24] = np.linalg.multi_dot([adjointTrans(gwc[0:3, 0:3], gwc[0:3, 3]),K_inv,adjointTrans(R_config_, p_config_).T])
+
         # constraint 4: in the friction cone: only consider about the env force for now
         J4 = np.zeros([16,24])
         for k in range(8):
@@ -185,13 +194,15 @@ class taskModel2():
         P = np.identity(24)
         P[18:21,18:21] = 0.08*np.identity(3)
         P[21:23,21:23] = 0.0008*np.identity(2)
+        P[6:9,6:9] = 10*np.identity(3)
+        P[9:12,9:12] = 0.001*np.identity(3)
         p = np.zeros(24)
-        p[18:] = -f_contact
-        p[18:21] = 0.08*p[18:21]
-        p[21:23] = 0.0008*p[21:23]
+        #p[18:] = -f_contact
+        #p[18:21] = 0.08*p[18:21]
+        #p[21:23] = 0.0008*p[21:23]
 
-        A = np.concatenate((J1[6:,:],J2,J5))
-        b = np.concatenate((-G_o,v_obj_star,np.zeros(3)))
+        A = np.concatenate((J1[6:,:],J2,J3,J5))
+        b = np.concatenate((-G_o,v_obj_star,np.dot(J3[:,18:],f_contact),np.zeros(3)))
 
         G_bound1 = np.zeros([2,24])
         G_bound1[0,14] = G_bound1[1,17] = -1
@@ -219,17 +230,15 @@ class taskModel2():
 
         x_obj_body = res_x[0:6]
         gwo = np.dot(cart2g(self.obj_traj[i]), twist2g(x_obj_body))
-        #x_obj = g2cart(np.dot(cart2g(self.obj_traj[i]), twist2g(x_obj_body)))
-
-        K_inv = np.zeros([6,6])
-        K_inv[0:5,0:5] = np.linalg.inv(K_spring[0:5,0:5])
+        res_robot = g2cart(np.dot(twist2g(res_x[6:12]),cart2g(x_robot_)))
+        '''
         df_contact = res_x[18:] - f_contact
         df_config = np.dot(adjointTrans(R_config_, p_config_).T,df_contact)
         dx_config = np.dot(K_inv, df_config)
-        ub_x = np.array([1, 1, 2, 1 * np.pi / 180, 1 * np.pi / 180, 1 * np.pi / 180])
-        lb_x = -ub_x
-        dx_config = np.minimum(dx_config, ub_x)
-        dx_config = np.maximum(dx_config, lb_x)
+        #ub_x = np.array([1, 1, 2, 1 * np.pi / 180, 1 * np.pi / 180, 1 * np.pi / 180])
+        #lb_x = -ub_x
+        #dx_config = np.minimum(dx_config, ub_x)
+        #dx_config = np.maximum(dx_config, lb_x)
         x_config = x_config_ + dx_config
         print('dx_config',dx_config)
         print('x_config',x_config)
@@ -241,8 +250,12 @@ class taskModel2():
         gr = np.linalg.multi_dot([gwo, homo_g(self.Rc,self.pc), homo_g(R_config,p_config)])
         print(gr)
         x_robot = g2cart(gr)
+        
+        print(x_robot)
+        '''
+        print(res_robot)
 
-        return x_robot
+        return res_robot
 
     def linear_state_estimation(self, x_robot, x_robot_, x_config_, x_obj_, ft_force):
         # x: v_obj_body, v_config_s

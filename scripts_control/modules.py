@@ -225,11 +225,18 @@ class compliantMapping():
         return self.__KNNmapping_sum(X, _Xref_nbrs,_Xref, _Y_ref, _alpha)
 
 class abbRobot():
-    def __init__(self):
+
+    def __init__(self, *bagname_argv):
+
         self.nodename= 'optimal_control'
         self.robot_ns = "/abb120"
         self.lock = Lock()
         self.cur_wrenches = np.zeros([10,6])
+
+        if len(bagname_argv)>0:
+            bagname = bagname_argv[0]
+            print("Recording bag with name: {0}".format(bagname))
+            self.bag = rosbag.Bag(bagname, mode='w')
 
     def initialize(self):
         rospy.loginfo('Waiting for services...')
@@ -250,6 +257,7 @@ class abbRobot():
         self.SetSpeed(10, 10)
 
     def go(self, p):
+        print('robot go to: '+ str(p))
         self.SetCartesian(*p)
 
     def force_torque_callback(self,data):
@@ -267,6 +275,34 @@ class abbRobot():
         pos = self.GetCartesian()
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
         return p
+
+    def record_state_robot_ft(self,seqid, obj_state):
+
+        self.record_ft(seqid)
+
+        pos = self.GetCartesian()
+        time_now = rospy.Time.now()
+        rob_pos_data = to_poseStamped(time_now,seqid,[pos.x, pos.y, pos.z], [pos.q0, pos.qx, pos.qy, pos.qz])
+        obj_pos_data = to_poseStamped(time_now,seqid,[obj_state.x, obj_state.y, obj_state.z], [obj_state.q0, obj_state.qx, obj_state.qy, obj_state.qz])
+
+        # record the cartesian and wrench
+        self.bag.write('robot position', rob_pos_data)
+        self.bag.write('object position', obj_pos_data)
+        print('Position Data recorded.')
+
+    def record_ft(self,seqid):
+        wrench_data = self.cur_wrench
+        wrench_data.header.seq = seqid
+        wrench_data.header.frame_id = 'ft_tool'
+        self.bag.write('wrench', wrench_data)
+        print('FT Data recorded.')
+
+
+    def stop(self):
+        if hasattr(self, 'bag'):
+            self.bag.close()
+            print('Task finished, stop recording.')
+        self.netft_subscriber.unregister()
 
 class taskModel():
 
@@ -733,3 +769,18 @@ class taskModel():
     	p_actual[3:]=p_rigid[3:]
     	p_actual[0:3] = p_rigid[0:3] - np.dot(quat2rotm(p_rigid[3:]),[0,0,self.gripper_length]) + self.origin.reshape(-1)
     	return p_actual
+
+def to_poseStamped(t, seqid, p, q):
+    poses = PoseStamped()
+    poses.header.stamp = t
+    poses.header.seq = seqid
+    poses.header.frame_id = 'world'
+    poses.pose.position.x = p[0]
+    poses.pose.position.y = p[1]
+    poses.pose.position.z = p[2]
+    poses.pose.orientation.x = q[1]
+    poses.pose.orientation.y = q[2]
+    poses.pose.orientation.z = q[3]
+    poses.pose.orientation.w = q[0]
+
+    return poses
