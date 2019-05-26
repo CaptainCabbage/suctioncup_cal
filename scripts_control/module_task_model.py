@@ -1,6 +1,6 @@
 from modules import *
 from symbolic_derivatives import *
-from scipy.optimize import LinearConstraint
+from scipy.optimize import least_squares
 from cvxopt import matrix, solvers
 import time
 
@@ -23,7 +23,6 @@ class taskModel2():
         self.fric_mu = task_data["fric_coef"]
         self.gripper_length=task_data["gripper_length"]
 
-        # todo:import computed obj/contact/robot end traj/actual robot traj
         self.origin = np.array(task_data["origin"])
         self.ref_obj_traj=np.array(task_data["object_trajectory"]).T
         self.ref_obj_vel_traj=np.array(task_data["object_vel_trajectory"]).T
@@ -73,12 +72,14 @@ class taskModel2():
         T = np.cross(P, F)
         ft_tool = ft_t + ft_offset - np.concatenate((F,T))
         ft_tool[3:] = 1000*ft_tool[3:]
+
+        # manual correct
+        ft_tool[3:] = ft_tool[3:] + np.array([-26, 11, 9.6])
+
         return ft_tool
 
     def state_estimation(self, ft_force, actual_cartesian):
         i = self.current_timestep
-        print('Timestep'),
-        print(i)
         print('State estimation:')
         # observation
         self.act_traj[i] = actual_cartesian
@@ -97,7 +98,8 @@ class taskModel2():
             self.obj_traj[i] = g2cart(np.dot(cart2g(self.obj_traj[i-1]), twist2g(x_obj_body)))
             self.config_traj[i] = g2cart(np.dot(twist2g(x_config_s),cart2g(self.config_traj[i-1])))
 
-        print('estimated obj', self.obj_traj[i])
+        estimated_angle = np.linalg.norm(quat2exp(self.obj_traj[i,3:]))
+        print('estimated obj rotation angle: ' + str(estimated_angle*180/3.14) + ', position: ' + str(self.obj_traj[i]))
 
         # compute contact
         self.contact_traj[i,0:3] = np.dot(quat2rotm(self.obj_traj[i,3:]),self.pc) + self.obj_traj[i,0:3]
@@ -136,10 +138,14 @@ class taskModel2():
         K_config = self.vc_mapping.Kfx(x_config_.reshape(1, -1)) #force exert on the rigid end relative to rigid end pos change
         #K_config = -np.diag([10,10,10,200,200,200])
         K_spring = K_config
+        K_spring[0,0] = K_spring[1,1] = 4.7
+        K_spring[2,2] = 9
+        #K_spring[2,[3,4]] = 0
+        K_spring[3,3] = K_spring[4,4] = 1000
         f_spring_ = f_config_
         K_inv = np.zeros([6,6])
         K_inv[0:5,0:5] = np.linalg.inv(K_spring[0:5,0:5])
-        #print('K_spring',K_spring)
+        print('K_spring',K_spring)
 
         # constraints matrix
         #1 env_constraints
@@ -148,7 +154,7 @@ class taskModel2():
         J_co = adjointTrans_inv(self.Rc,self.pc).T
         #J_co = adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc))
         G_o = np.concatenate((np.dot(R_obj_.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0)
-        #print('G_o',G_o)
+        print('G_o',G_o)
 
         ADG_env = np.zeros([6,6])
         ADG_env[0:3,0:3] = R_obj_.T
@@ -192,46 +198,66 @@ class taskModel2():
 
         # use quadprog
         P = np.identity(24)
-        P[18:21,18:21] = 0.08*np.identity(3)
-        P[21:23,21:23] = 0.0008*np.identity(2)
-        P[6:9,6:9] = 10*np.identity(3)
-        P[9:12,9:12] = 0.001*np.identity(3)
+        P[18:21,18:21] = np.identity(3)
+        P[21:23,21:23] = 0.001*np.identity(2)
+        M_va = np.identity(6)
+        #M_va[0:3,3:] = -skew_sym(x_robot_[0:3])
+
+        P[6:12,6:12] = np.dot(M_va.T,M_va)#np.identity(6)
+        P[9:12,9:12]=np.identity(3)*1000
         p = np.zeros(24)
-        #p[18:] = -f_contact
-        #p[18:21] = 0.08*p[18:21]
-        #p[21:23] = 0.0008*p[21:23]
+        x_robot_0 = self.actual2robot(self.actual_start)
+        #p[6:9] = x_robot_[0:3] - x_robot_0[0:3]
+        w_ref = rotm2exp(quat2rotm(x_robot_0[3:]).dot(quat2rotm(x_robot_[3:]).T))
+
+        # hope the orientation of robot to be up right
+        if np.linalg.norm(w_ref) != 0:
+            p[9:12] = -1000 * 0.05 * w_ref / np.linalg.norm(w_ref)
+
+        p[18:] = -f_contact
+        p[18:21] = 0.8*p[18:21]
+        p[21:23] = 0.0008*p[21:23]
 
         A = np.concatenate((J1[6:,:],J2,J3,J5))
         b = np.concatenate((-G_o,v_obj_star,np.dot(J3[:,18:],f_contact),np.zeros(3)))
 
+        # env normal force > thr
         G_bound1 = np.zeros([2,24])
         G_bound1[0,14] = G_bound1[1,17] = -1
+        if self.current_timestep > 50:
+            h_1 = -np.ones(2)*2
+        else:
+            h_1 = -np.ones(2) * 4
 
-        h_lb1 = np.ones(2)*4
-
+        # normal contact force less than
         G_bound2 = np.zeros([1,24])
         G_bound2[0,20] = 1
+        h_2 = np.ones(1)*20
 
+        # robot velocity bound
+        G_bound3 = np.zeros([12,24])
+        G_bound3[0:6,6:12] = np.identity(6)
+        G_bound3[6:, 6:12] = -np.identity(6)
+        tb = 5
+        rb = 0.1
+        h_3 = np.array([tb,5,tb,0.08,rb,rb,tb,tb,5,0.08,rb,rb])
 
-
-        G = np.concatenate((-J4, G_bound1,G_bound2))
-        h = np.concatenate((np.zeros(16),-h_lb1,np.ones(1)*20))
+        G = np.concatenate((-J4, G_bound1,G_bound2, G_bound3))
+        h = np.concatenate((np.zeros(16),h_1,h_2,h_3))
 
         #G = -J4
         #h = np.zeros(16)
         solvers.options['show_progress'] = False
 
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
-        print(sol['status']),
-        print('solution after total iterations of'),
-        print(sol['iterations'])
-        print(np.array(sol['x']).reshape(-1))
         res_x = np.array(sol['x']).reshape(-1)
+        print(sol['status'] + 'solution after total iterations of' + str(sol['iterations']))
+        print(res_x)
+        res_robot = g2cart(np.dot(twist2g(res_x[6:12]), cart2g(x_robot_)))
+
 
         x_obj_body = res_x[0:6]
         gwo = np.dot(cart2g(self.obj_traj[i]), twist2g(x_obj_body))
-        res_robot = g2cart(np.dot(twist2g(res_x[6:12]),cart2g(x_robot_)))
-        '''
         df_contact = res_x[18:] - f_contact
         df_config = np.dot(adjointTrans(R_config_, p_config_).T,df_contact)
         dx_config = np.dot(K_inv, df_config)
@@ -240,9 +266,6 @@ class taskModel2():
         #dx_config = np.minimum(dx_config, ub_x)
         #dx_config = np.maximum(dx_config, lb_x)
         x_config = x_config_ + dx_config
-        print('dx_config',dx_config)
-        print('x_config',x_config)
-
 
         #x_config = self.vc_mapping.Mapping(res_x[18:].reshape(1,-1),'contact_wrench','config').reshape(-1)
         R_config = exp2rotm(x_config[3:])
@@ -251,9 +274,15 @@ class taskModel2():
         print(gr)
         x_robot = g2cart(gr)
         
-        print(x_robot)
-        '''
-        print(res_robot)
+        print('x_robot:', x_robot)
+
+        print('res_robot:', res_robot)
+        print('v_robot close to:', -p[6:12]/1000)
+        print('robot_change', res_robot[0:3] - x_robot_[0:3])
+
+        if sol['status'] != 'optimal':
+            res_robot = []
+
 
         return res_robot
 
@@ -288,10 +317,26 @@ class taskModel2():
         A = R[0:r_M,0:-1]
         b = R[0:r_M,-1]
         # cost function
-        P = np.identity(12)
-        P[6:,6:] = np.identity(6)*100
+
+        # previous
+        '''
+        P = np.identity(12)*10
+        P[6:,6:] = np.identity(6)*10
         #p = np.zeros(12)
-        p = np.concatenate((np.zeros(6),-dx_config_guess))*100
+        p = np.concatenate((np.zeros(6),-dx_config_guess))*5
+        '''
+        M = np.identity(6)
+        M[0:3,3:] = -skew_sym(x_config_[0:3])
+        P = np.identity(12)
+        P[0:6,0:6] = P[0:6,0:6]*0.1
+        P[6:12,6:12] = np.dot(P[6:12,6:12],np.diag([10,10,10,2000,2000,1000]))
+        P[6:,6:] = np.linalg.multi_dot([M.T,P[6:,6:],M]) + np.identity(6)
+        p = np.zeros(12)
+        p[2] = self.obj_m*9.8
+        p[6:] = np.dot(-ft_force,M)
+        #p[6:] = g2twist(cart2g(x_config_))
+        #p[6:9] = p[6:9]*5
+        #p[9:12] = p[9:12]*500
         #G = np.concatenate((np.identity(12),-np.identity(12)))
         adg_obj =adjointTrans(quat2rotm(x_obj_[3:]), x_obj_[0:3])
         G= -np.concatenate((adg_obj[2],np.zeros(6))).reshape(1,-1)
@@ -302,15 +347,12 @@ class taskModel2():
         #G = np.concatenate((G,G_bound))
         #h = np.concatenate((h,bound,bound))
 
-        solvers.options['show_progress'] = True
+        solvers.options['show_progress'] = False
         #solvers.options['feastol'] = 1e-4
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         res_x = np.array(sol['x']).reshape(-1)
-        print(sol['status']),
-        print('solution after total iterations of'),
-        print(sol['iterations'])
-        print(res_x)
-        ref_x = np.concatenate((np.zeros(6),np.dot(np.linalg.inv(J_robot[0:6,6:]),v_robot_spatial)))
+        print(sol['status'] + 'solution after total iterations of' + str(sol['iterations']))
+        #print(res_x)
         return res_x
 
     def actual2robot(self,p_actual_):
@@ -384,7 +426,23 @@ class gripperMapping():
 
         return _Xref, _Xref_nbrs, _Yref, _alpha
 
-    def local_lr_possemidef(self, X, X_name, Y_name):
+    def Kfx(self,x_pos):
+        K, x0,y0,r = self.local_lr(x_pos, 'config', 'wrench')
+        return K
+        #return self.local_lr(x_pos,'config','wrench').coef_
+
+    def Mapping(self, x, X_name, Y_name):
+
+        K, x0, y0,r_max = self.local_lr(x, X_name, Y_name)
+        x = x.reshape(-1)
+        r = np.linalg.norm(x[:-1]-x0[:-1])
+        if r > 1.2*r_max:
+            x = x*1.2*r_max/r
+        y_predict = np.dot(K, (x - x0).T).reshape(-1) + y0
+
+        return y_predict
+
+    def local_lr(self, X, X_name, Y_name):
         # return: Y.T = K*(X-x0).T + y0.T
         #print(X)
         Xref, Xref_nbrs, Yref, alpha = self.__get_param(X_name,Y_name)
@@ -401,23 +459,48 @@ class gripperMapping():
         x0 = np.mean(X_ind, axis=0)
         y0 = np.mean(Y_ind, axis=0)
         r_max = max(np.linalg.norm(X_ind[:, :-1] - x0[:-1],axis=1))
-        K_T = posdef_estimation(X_ind[:, :-1] - x0[:-1],Y_ind[:,:-1]- y0[:-1])
+        K_T = self.ls_estimation(X_ind[:, :-1] - x0[:-1],Y_ind[:,:-1]- y0[:-1])
+        #K_T = posdef_estimation(X_ind[:, :-1] - x0[:-1], Y_ind[:, :-1] - y0[:-1])
         K = np.zeros([6,6])
         K[0:5,0:5] = K_T.T
+        #K[4,4] = K[3,3] = 1000
         return K,x0,y0,r_max
 
-    def Kfx(self,x_pos):
-        K, x0,y0,r = self.local_lr_possemidef(x_pos, 'config', 'wrench')
+    def ls_estimation(self, X_data, Y_data):
+        # matrix(X)* k = Y
+        def special_X(x):
+            X = np.zeros([5,11])
+            X[0,0:3] = [x[0],x[2],x[4]]
+            X[1,3:6] = [x[1],x[2],x[3]]
+            X[2,[1,4,6,9,10]] = [x[0],x[1],x[2],x[3],x[4]]
+            X[3,[5,7,9]] = [x[1],x[3],x[2]]
+            X[4,[2,8,10]] = [x[0],x[4],x[2]]
+            return X
+
+        matrix_X = np.concatenate([special_X(X_data[i]) for i in range(X_data.shape[0])])
+        Y = Y_data.reshape(-1)
+        P = np.dot(matrix_X.T,matrix_X)
+        p = -np.dot(Y.T,matrix_X)
+        G = np.zeros([5,11])
+        G[0,0] = G[1,3] = G[2,6] = G[3,7] = G[4,8] = -1
+        h = np.zeros(5)
+        solvers.options['show_progress'] = False
+        sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h))
+        res_x = np.array(sol['x']).reshape(-1)
+        K = np.zeros([5,5])
+        K[0,0] = res_x[0]
+        K[0,2] = K[2,0] = res_x[1]
+        K[0,4] = K[4,0] = res_x[2]
+        K[1,1] = res_x[3]
+        K[1,2] = K[2,1] = res_x[4]
+        K[1,3] = K[3,1] = res_x[5]
+        K[2,2] = res_x[6]
+        K[3,3] = res_x[7]
+        K[4,4] = res_x[8]
+        K[2,3] = K[3,2] = res_x[9]
+        K[2,4] = K[4,2] = res_x[10]
         return K
-        #return self.local_lr(x_pos,'config','wrench').coef_
 
-    def Mapping(self, x, X_name, Y_name):
 
-        K, x0, y0,r_max = self.local_lr_possemidef(x, X_name, Y_name)
-        x = x.reshape(-1)
-        r = np.linalg.norm(x[:-1]-x0[:-1])
-        if r > 1.2*r_max:
-            x = x*1.2*r_max/r
-        y_predict = np.dot(K, (x - x0).T).reshape(-1) + y0
 
-        return y_predict
+

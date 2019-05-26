@@ -22,55 +22,6 @@ from std_msgs.msg import *
 from geometry_msgs.msg import *
 from threading import Lock
 
-class Controller():
-    def __init__(self, horizon):
-        #self.control_freq = control_freq #we temporary let the control freq to be one
-        self.horizon = horizon
-    def LQR(self,cur_x, ref_x_traj, Kxt):
-        # Kxt: local linearization for x_t+1 = Kxt*ut + x_t
-        # ref_x_traj: start from current timestep
-        Cxx = np.identity(6)
-        Cuu = np.identity(6)*Scaling_u # add scaling factor
-        Cxu = np.zeros([6,6])
-        Cux = np.zeros([6,6])
-        C = np.concatenate((np.concatenate((Cxx,Cux)), np.concatenate((Cxu,Cuu))),axis=1)
-        cu = np.zeros(6)
-        cx = ref_x_traj[:self.horizon] # todo: what if the horizon excceed traj end
-        F = np.zeros([6,12])
-        F[:,0:6] = np.identity(6)
-        F[6:,6:] = Kxt
-        f = cx[1:] - cx[0:-1]
-
-        V = np.zeros([horizon+1,6,6])
-        v = np.zeros([horizon+1,6,1])
-        Q = np.zeros([horizon,12,12])
-        q = np.zeros([horizon,12,1])
-        K = np.zeros([horizon,6,6])
-        k = np.zeros([horizon,6,1])
-        u = np.zeros([horizon,6,1])
-
-        for t in range(horizon-1,-1,-1):
-            Q[t] = C + np.dot(F.T,V[t+1].dot(F))
-            q[t] = np.concatenate((cu,cx[t])) + np.dot(F.T,V[t+1].dot(f[t])) + np.dot(F.T,v[t+1])
-            Qxx = Q[t][0:6,0:6]
-            Qxu = Q[t][0:6,6:]
-            Quu = Q[t][6:,6:]
-            Qux = Q[t][6:,0:6]
-            Quu_inv = np.linalg.pinv(Quu)
-            qx = q[t][0:6]
-            qu = q[t][6:]
-            K[t] = -np.dot(Quu_inv,Qux)
-            k[t] = -np.dot(Quu_inv,qu)
-            V[t] = Qxx + np.dot(Qxu,K[t]) + np.dot(K[t].T,Qux) + np.dot(K[t].T,Quu.dot(K[t]))
-            v[t] = qx + Qxu.dot(k[t]) + np.dot(K[t].T,qu) + np.dot(K[t].T,Quu.dot(K[t]))
-
-        x = np.zeros([horizon+1,6,1])
-        x[0] = cur_force
-        for t in range(0,horizon,1):
-            u[t] = K[t].dot(x[t]) + k[t]
-            x[t+1] = x[t] + np.dot(Kxt,u[t]) + f[t]
-
-        return u
 
 class compliantMapping():
     # TODO: verify the accuracy of mapping
@@ -276,24 +227,23 @@ class abbRobot():
         p=[pos.x, pos.y, pos.z, pos.q0, pos.qx, pos.qy, pos.qz]
         return p
 
-    def record_state_robot_ft(self,seqid, obj_state):
+    def record_state_robot_ft(self,seqid, obj_state, f):
 
-        self.record_ft(seqid)
+        self.record_ft(seqid, f)
 
         pos = self.GetCartesian()
         time_now = rospy.Time.now()
         rob_pos_data = to_poseStamped(time_now,seqid,[pos.x, pos.y, pos.z], [pos.q0, pos.qx, pos.qy, pos.qz])
-        obj_pos_data = to_poseStamped(time_now,seqid,[obj_state.x, obj_state.y, obj_state.z], [obj_state.q0, obj_state.qx, obj_state.qy, obj_state.qz])
+        obj_pos_data = to_poseStamped(time_now,seqid,[obj_state[0], obj_state[1], obj_state[2]], [obj_state[3], obj_state[4], obj_state[5], obj_state[6]])
 
         # record the cartesian and wrench
         self.bag.write('robot position', rob_pos_data)
         self.bag.write('object position', obj_pos_data)
         print('Position Data recorded.')
 
-    def record_ft(self,seqid):
-        wrench_data = self.cur_wrench
-        wrench_data.header.seq = seqid
-        wrench_data.header.frame_id = 'ft_tool'
+    def record_ft(self,seqid, f):
+        wrench_data = to_wrenchStamped(rospy.Time.now(),seqid,f)
+        wrench_data.header.frame_id = 'contact_frame'
         self.bag.write('wrench', wrench_data)
         print('FT Data recorded.')
 
@@ -784,3 +734,18 @@ def to_poseStamped(t, seqid, p, q):
     poses.pose.orientation.w = q[0]
 
     return poses
+
+def to_wrenchStamped(t, seqid, f):
+    wrenchs = WrenchStamped()
+    wrenchs.header.stamp = t
+    wrenchs.header.seq = seqid
+    wrenchs.header.frame_id = 'tool'
+    wrenchs.wrench.force.x = f[0]
+    wrenchs.wrench.force.y = f[1]
+    wrenchs.wrench.force.z = f[2]
+    wrenchs.wrench.torque.x = f[3]
+    wrenchs.wrench.torque.y = f[4]
+    wrenchs.wrench.torque.z = f[5]
+
+    return wrenchs
+
