@@ -74,7 +74,7 @@ class taskModel2():
         ft_tool[3:] = 1000*ft_tool[3:]
 
         # manual correct
-        ft_tool[3:] = ft_tool[3:] + np.array([-26, 11, 9.6])
+        ft_tool[3:] = ft_tool[3:] + np.array([-16.5, 16.3, 11])
 
         return ft_tool
 
@@ -104,7 +104,7 @@ class taskModel2():
         # compute contact
         self.contact_traj[i,0:3] = np.dot(quat2rotm(self.obj_traj[i,3:]),self.pc) + self.obj_traj[i,0:3]
         self.contact_traj[i,3:] = quat_mul(self.qc,self.obj_traj[i,3:])
-        print('estimated config', self.config_traj[i])
+        #print('estimated config', self.config_traj[i])
 
         R_config = quat2rotm(self.config_traj[i,3:])
         adg_temp = adjointTrans(R_config.T,-np.dot(R_config.T,self.config_traj[i,0:3])).T
@@ -145,7 +145,7 @@ class taskModel2():
         f_spring_ = f_config_
         K_inv = np.zeros([6,6])
         K_inv[0:5,0:5] = np.linalg.inv(K_spring[0:5,0:5])
-        print('K_spring',K_spring)
+        #print('K_spring',K_spring)
 
         # constraints matrix
         #1 env_constraints
@@ -154,7 +154,6 @@ class taskModel2():
         J_co = adjointTrans_inv(self.Rc,self.pc).T
         #J_co = adjointTrans(self.Rc.T, -np.dot(self.Rc.T,self.pc))
         G_o = np.concatenate((np.dot(R_obj_.T,[0,0,-self.obj_m*self.gravity]),np.zeros(3)),axis = 0)
-        print('G_o',G_o)
 
         ADG_env = np.zeros([6,6])
         ADG_env[0:3,0:3] = R_obj_.T
@@ -252,10 +251,10 @@ class taskModel2():
         sol = solvers.qp(matrix(P), matrix(p), matrix(G), matrix(h), matrix(A), matrix(b))
         res_x = np.array(sol['x']).reshape(-1)
         print(sol['status'] + 'solution after total iterations of' + str(sol['iterations']))
-        print(res_x)
+        #print(res_x)
         res_robot = g2cart(np.dot(twist2g(res_x[6:12]), cart2g(x_robot_)))
 
-
+        '''
         x_obj_body = res_x[0:6]
         gwo = np.dot(cart2g(self.obj_traj[i]), twist2g(x_obj_body))
         df_contact = res_x[18:] - f_contact
@@ -275,10 +274,10 @@ class taskModel2():
         x_robot = g2cart(gr)
         
         print('x_robot:', x_robot)
-
-        print('res_robot:', res_robot)
-        print('v_robot close to:', -p[6:12]/1000)
-        print('robot_change', res_robot[0:3] - x_robot_[0:3])
+        '''
+        #print('res_robot:', res_robot)
+        #print('v_robot close to:', -p[6:12]/1000)
+        #print('robot_change', res_robot[0:3] - x_robot_[0:3])
 
         if sol['status'] != 'optimal':
             res_robot = []
@@ -289,14 +288,14 @@ class taskModel2():
     def linear_state_estimation(self, x_robot, x_robot_, x_config_, x_obj_, ft_force):
         # x: v_obj_body, v_config_s
         x_config_guess = self.vc_mapping.Mapping(-ft_force.reshape(1, -1), 'wrench', 'config').reshape(-1)
-        print('x_config_guess',x_config_guess)
+        #print('x_config_guess',x_config_guess)
         #dx_config_guess = x_config_guess - np.concatenate((x_config_[0:3],quat2exp(x_config_[3:])))
         dx_config_guess = g2twist(np.dot(twist2g(x_config_guess),cart2g_inv(x_config_)))
 
         # compute robot spatial vel
         gs = np.dot(cart2g(x_robot),cart2g_inv(x_robot_))
         v_robot_spatial = g2twist(gs)
-        print('v_robot_spatial',v_robot_spatial)
+        #print('v_robot_spatial',v_robot_spatial)
 
         # compute robot constraint matrix: J_robot*x = v_robot_spatial
         J_robot = np.zeros((6,12))
